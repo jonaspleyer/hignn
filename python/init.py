@@ -64,10 +64,12 @@ if __name__ == '__main__':
             os.chdir(source_path + '/build')
         os.system('rm -rf *')
         
+        torch_path = os.path.dirname(torch.__file__)
+        
         if is_gpu_available:
-            os.system('export CXX=$Kokkos_PATH/bin/nvcc_wrapper && cmake -D CMAKE_PREFIX_PATH="$LibTorch_PATH/share/cmake/;$Kokkos_PATH" -D CMAKE_CXX_EXTENSIONS=Off -D USE_GPU:BOOL=On ../')
+            os.system('export CXX=$Kokkos_PATH/bin/nvcc_wrapper && cmake -D CMAKE_PREFIX_PATH="'+torch_path+'/share/cmake/;$Kokkos_PATH" -D CMAKE_CXX_EXTENSIONS=Off -D USE_GPU:BOOL=On -D BUILD_SHARED_LIBS=ON ../')
         else:
-            os.system('cmake -D CMAKE_PREFIX_PATH="$LibTorch_PATH/share/cmake/" -D CMAKE_CXX_EXTENSIONS=Off -D USE_GPU:BOOL=Off ../')
+            os.system('cmake -D CMAKE_PREFIX_PATH="'+torch_path+'/share/cmake/" -D CMAKE_CXX_EXTENSIONS=Off -D USE_GPU:BOOL=Off ../')
             
     os.chdir(source_path + '/build')
         
