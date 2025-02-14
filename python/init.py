@@ -8,13 +8,7 @@ if __name__ == '__main__':
     
     os.system('clear')
     
-    is_gpu_available = False
-        
-    try:
-        subprocess.check_output('nvidia-smi')
-        is_gpu_available = True
-    except Exception as e:
-        pass
+    is_gpu_available = torch.cuda.is_available()
     
     parser = argparse.ArgumentParser(description='build')
     
