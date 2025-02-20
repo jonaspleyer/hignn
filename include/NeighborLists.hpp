@@ -346,7 +346,7 @@ public:
     pybind11::buffer_info buf = edgeInfo.request();
     auto ptr = (size_t *)buf.ptr;
 
-    const int numEdge = mThreeBodyEdgeInfo.extent(0);
+    const size_t numEdge = mThreeBodyEdgeInfo.extent(0);
     Kokkos::parallel_for(
         Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(0, numEdge),
         [&](size_t i) {
@@ -409,7 +409,7 @@ public:
     pybind11::buffer_info buf = edgeInfo.request();
     auto ptr = (size_t *)buf.ptr;
 
-    const int numEdge = mThreeBodyEdgeSelfInfo.extent(0);
+    const size_t numEdge = mThreeBodyEdgeSelfInfo.extent(0);
     Kokkos::parallel_for(
         Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(0, numEdge),
         [&](size_t i) {
