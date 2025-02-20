@@ -6,6 +6,8 @@ from mpi4py import MPI
 import time
 import h5py
 
+import torch
+
 os.system("clear")
 
 if __name__ == '__main__':    
@@ -14,10 +16,10 @@ if __name__ == '__main__':
     
     hignn.Init()
     
-    nx = 10
-    ny = 10
-    nz = 16
-    dx = 1.5
+    nx = 100
+    ny = 100
+    nz = 100
+    dx = 3
     x = np.arange(0, nx * dx, dx)
     y = np.arange(0, ny * dx, dx)
     z = np.arange(0, nz * dx, dx)
@@ -30,7 +32,7 @@ if __name__ == '__main__':
 
     hignn_model = hignn.HignnModel(X, 100)
     
-    hignn_model.load_two_body_model('nn/3D_force_UB_max600_try2')
+    hignn_model.load_two_body_model('nn/two_body_unbounded')
     
     # set parameters for far dot, the following parameters are default values
     hignn_model.set_epsilon(0.1)
@@ -44,14 +46,18 @@ if __name__ == '__main__':
     neighbor_list = hignn.NeighborLists()
     neighbor_list.update_coord(X)
     
-    neighbor_list.set_two_body_epsilon(5.0)
     neighbor_list.set_three_body_epsilon(5.0)
     
-    neighbor_list.build_two_body_info()
+    t1 = time.time()
     neighbor_list.build_three_body_info()
+    if rank == 0:
+        print("Time for building three body info: {t:.4f}s".format(t = time.time() - t1))
     
-    two_body_edge_info = neighbor_list.get_two_body_edge_info()
+    t1 = time.time()
     three_body_edge_info = neighbor_list.get_three_body_edge_info()
+    three_body_edge_self_info = neighbor_list.get_three_body_edge_self_info()
+    if rank == 0:
+        print("Time for obtaining edge info: {t:.4f}s".format(t = time.time() - t1))
     
     del hignn_model
     del neighbor_list
