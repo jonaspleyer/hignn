@@ -4,7 +4,7 @@ import numpy as np
 import sys
 from mpi4py import MPI
 import time
-import h5py
+import h5py   
 
 # HiGNN Model Configuration
 LEAF_MINIMUM_NUMBER_OF_PARTICLES = 100         # Must be < total number of particles 
