@@ -3,10 +3,10 @@ import vtk
 from vtk.util import numpy_support as VN
 import os
 import h5py
-# from filament import MAXIMUM_NUMBER_OF_ITERATIONS, N_CHAIN
-
-MAXIMUM_NUMBER_OF_ITERATIONS = 100000
-N_CHAIN = 31
+from filament import MAXIMUM_NUMBER_OF_ITERATIONS, N_CHAIN
+  
+# MAXIMUM_NUMBER_OF_ITERATIONS = 100000
+# N_CHAIN = 31
 
 for N in range(int(MAXIMUM_NUMBER_OF_ITERATIONS/100)):
     os.system('clear')
