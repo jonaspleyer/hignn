@@ -47,7 +47,7 @@ if __name__ == '__main__':
         torch.jit.save(sm, target_file_name)
         exit()
     else:
-        nn_2body = torch.load(file_name)
+        nn_2body = torch.load(file_name, weights_only=False)
         model = Net(nn_2body).cuda()
 
         for i in range(gpus):
