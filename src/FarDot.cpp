@@ -944,9 +944,20 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
       Kokkos::parallel_for(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workNodeSize),
           KOKKOS_LAMBDA(const int i) {
+            const int nodeI = mFarMatI(workingNode(i));
+            const int indexIStart = mClusterTree(nodeI, 2);
+            const int indexIEnd = mClusterTree(nodeI, 3);
+            const int rowSize = indexIEnd - indexIStart;
+
+            const int nodeJ = mFarMatJ(workingNode(i));
+            const int indexJStart = mClusterTree(nodeJ, 2);
+            const int indexJEnd = mClusterTree(nodeJ, 3);
+            const int colSize = indexJEnd - indexJStart;
+
             workingNodeIteration(i)++;
             if (nu2(i) < mu2(i) * epsilon2 ||
-                workingNodeIteration(i) >= maxIter) {
+                workingNodeIteration(i) >= maxIter ||
+                workingNodeIteration(i) >= min(rowSize, colSize)) {
               stopNode(i) = -1;
             } else {
               stopNode(i) = 0;
