@@ -51,3 +51,4 @@ build/
 *.h5
 
 Result/
+python/HIGNN/__pycache__
