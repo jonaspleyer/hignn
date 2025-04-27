@@ -16,9 +16,9 @@ if __name__ == '__main__':
     
     hignn.Init()
     
-    nx = 100
-    ny = 100
-    nz = 100
+    nx = 50
+    ny = 50
+    nz = 50
     dx = 3
     x = np.arange(0, nx * dx, dx)
     y = np.arange(0, ny * dx, dx)
@@ -32,7 +32,7 @@ if __name__ == '__main__':
 
     hignn_model = hignn.HignnModel(X, 100)
     
-    hignn_model.load_two_body_model('nn/two_body_unbounded')
+    hignn_model.load_two_body_model('nn/two_body_unbounded_updated')
     
     # set parameters for far dot, the following parameters are default values
     hignn_model.set_epsilon(0.1)
