@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch_scatter import scatter
 from HIGNN.Data3 import Data3
 from HIGNN.Dataloader3 import DataLoader
-from HIGNN.model_structure import Two_body_net, Three_body_net, Two_body_self_net, Two_body_net_Hmatrix, HIGNN_mdoel
+from HIGNN.model_structure import Two_body_net, Three_body_net, Two_body_self_net, Two_body_net_Hmatrix, HIGNN_model
 import os
 import random
 
@@ -206,7 +206,7 @@ nn_2body = Two_body_net_Hmatrix(nn_2body)
 nn_3body = Three_body_net(nn_3body)
 nn_self = Two_body_self_net(nn_self)
 
-model = HIGNN_mdoel(nn_2body=nn_2body, nn_3body=nn_3body, nn_self=nn_self).to(device)
+model = HIGNN_model(nn_2body=nn_2body, nn_3body=nn_3body, nn_self=nn_self).to(device)
 
 # #### training part
 # These parameters e.g. lr can be changed to train a better model.
@@ -276,7 +276,7 @@ for epoch in range(num_epochs):
         tol_stop = test_loss
         # save model in one 
         torch.save(model, save_folder + '/HIGNN.pkl')
-        # save models seperately, the HIGNN_nn_2body will be used for H-matrix.
+        # save models separately, the HIGNN_nn_2body will be used for H-matrix.
         torch.save(model.nn_2body.net, save_folder + '/HIGNN_nn_2body.pkl')
         torch.save(model.nn_3body.net, save_folder + '/HIGNN_nn_3body.pkl')
         torch.save(model.nn_self.net, save_folder + '/HIGNN_nn_self.pkl')

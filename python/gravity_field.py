@@ -8,11 +8,9 @@ import h5py
 import torch
 import torch.nn as nn
 from torch_scatter import scatter
-from HIGNN.model_structure import HIGNN_mdoel
+from HIGNN.model_structure import HIGNN_model
 
 os.system("clear")
-
-
 
 # # Create Edge
 # # 3body edge: (j, k, i), attr: F_j, from j to k to i
