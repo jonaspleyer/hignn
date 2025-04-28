@@ -362,17 +362,17 @@ class FilamentParticleSphericalCloud:
     print("Generating cloud...\n")
     
     # Generate filament cloud
-    if filament_cloud:
-      filament_cloud.generate()  
+    if self.filament_cloud:
+      self.filament_cloud.generate()  
     
     # Generat particle cloud 
-    if particle_cloud:
-      particle_cloud.generate()  
+    if self.particle_cloud:
+      self.particle_cloud.generate()  
 
-    if cloud_type=="filament_particle_cloud":
-      self.positions = np.vstack((filament_cloud.positions, particle_cloud.positions))  
+    if self.cloud_type=="filament_particle_cloud":
+      self.positions = np.vstack((self.filament_cloud.positions, self.particle_cloud.positions))  
     else:
-      self.positions = filament_cloud.positions if filament_cloud else particle_cloud.positions
+      self.positions = self.filament_cloud.positions if self.filament_cloud else self.particle_cloud.positions
       
     print("Successfully generated cloud!")
         
@@ -421,4 +421,4 @@ if __name__ == '__main__':
       
   cloud.generate()
     
-  np.savetxt(cloud_type +'.txt', cloud.positions)
+  np.savetxt(cloud_type +'.pos', cloud.positions)
