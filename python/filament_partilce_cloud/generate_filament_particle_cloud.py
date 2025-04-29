@@ -162,7 +162,7 @@ class FilamentSphericalCloud(ParticleSphericalCloud):
       self.n_chain = n_chain
       self.rest_length = rest_length
       self.len_filament = rest_length * (n_chain - 1)
-      self.batch_size = batch_size if batch_size else (1024 if self.n_filament > 1000 else 100)
+      self.batch_size = batch_size if batch_size else (1000 if self.n_filament > 1000 else 100)
       self.positions = None
   
   def generate_fiber(self, Xc, chain):
@@ -272,7 +272,6 @@ class FilamentSphericalCloud(ParticleSphericalCloud):
 
     n = 0
     remaining_fibers = self.n_filament
-    print("batch size: ", self.batch_size)
 
     while n < self.n_filament:
       # Generate candidate centers
@@ -394,29 +393,29 @@ if __name__ == '__main__':
   particle_cloud_params = cloud_params['particle']
     
   if particle_cloud_params:
-    n_particle = particle_cloud_params['n_particle']
-    min_dist = particle_cloud_params['min_dist']
-    R1 = particle_cloud_params['R1']
-    R2 = particle_cloud_params['R2']
+    n_particle = particle_cloud_params['n_particle']       # Number of particles
+    min_dist = particle_cloud_params['min_dist']           # Min distance between particles
+    R1 = particle_cloud_params['R1']                       # Inner radius
+    R2 = particle_cloud_params['R2']                       # Outer radius
     particle_cloud = ParticleSphericalCloud(n_particle, min_dist, R1, R2)
       
   # Extract filament cloud parameters
   filament_cloud_params = cloud_params['filament']
     
   if filament_cloud_params:
-    n_filament = filament_cloud_params['n_filament']
-    n_chain = filament_cloud_params['n_chain']
-    rest_length = filament_cloud_params['rest_length']
-    min_dist = filament_cloud_params['min_dist']
-    R1 = filament_cloud_params['R1']
-    R2 = filament_cloud_params['R2']
+    n_filament = filament_cloud_params['n_filament']       # Number of filaments
+    n_chain = filament_cloud_params['n_chain']             # Particles per filament
+    rest_length = filament_cloud_params['rest_length']     # Rest length between particles
+    min_dist = filament_cloud_params['min_dist']           # Min distance between particles
+    R1 = filament_cloud_params['R1']                       # Inner radius
+    R2 = filament_cloud_params['R2']                       # Outer radius
     filament_cloud = FilamentSphericalCloud(n_filament, n_chain, rest_length, min_dist, R1, R2)
     
   # Generate cloud
   cloud = FilamentParticleSphericalCloud(
-    filament_cloud=filament_cloud,
-    particle_cloud=particle_cloud,
-    cloud_type=cloud_type
+    filament_cloud,
+    particle_cloud,
+    cloud_type
   )
       
   cloud.generate()
