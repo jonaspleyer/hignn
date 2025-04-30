@@ -174,8 +174,10 @@ if __name__ == '__main__':
     NN = X.shape[0]
     
     # HIGNN model
-    hignn_model = hignn.HignnModel(X, 100 if X.shape[0] > 100 else 10) # The minimal number of particles in a leaf node
-    hignn_model.load_two_body_model('nn/two_body_unbounded')
+    hignn_model = hignn.HignnModel(X, 100 if X.shape[0] > 100 else X.shape[0] // 2) # The minimal number of particles in a leaf node
+    hignn_model_params = config['model']
+    two_body_model = hignn_model_params['two_body_model']
+    hignn_model.load_two_body_model(two_body_model)
     
     # Set parameters for far dot, the following parameters are default values
     hignn_model.set_epsilon(0.01)
@@ -209,7 +211,8 @@ if __name__ == '__main__':
                 f.create_dataset('vel', data=V[rank_range[rank]:rank_range[rank+1], :])
         
         X = X + dt * V
-        ts = ts + dt        
+        ts = ts + dt
+
     if rank == 0:
         print("Time for simulation: {t:.4f}s".format(t = time.time() - t1))
     

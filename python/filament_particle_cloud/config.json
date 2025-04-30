@@ -2,7 +2,6 @@
     "cloud": {
         "type": "filament_particle_cloud",
         "_type": "Type of cloud to generate (options: 'filament_cloud', 'particle_cloud', 'filament_particle_cloud')",
-
         "particle": {
             "n_particle": 21504,
             "min_dist": 2.1,
@@ -10,7 +9,6 @@
             "R2": 300.0,
             "_description": "Parameters related to the particle cloud"
         },
-      
         "filament": {
             "n_filament": 1024,
             "n_chain": 21,
@@ -23,13 +21,14 @@
             "_description": "Parameters related to the filament chains"
         }
     },
-
     "simulation": {
         "gravitational_force": -1.0,
         "dt": 0.005,
         "t_max": 10000,
         "t_meas": 100,
         "_description": "Parameters related to the simulation"
+    },
+    "model": {
+        "two_body_model": "nn/two_body_unbounded"
     }
-  }
-  
+}
