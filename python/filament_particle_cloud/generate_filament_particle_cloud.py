@@ -382,7 +382,8 @@ if __name__ == '__main__':
   np.random.seed(0)
     
   # Load the parameters from JSON
-  with open("config.json", "r") as f:
+  working_directory = 'python/filament_particle_cloud'
+  with open(f"{working_directory}/config.json", "r") as f:
     config = json.load(f)
 
   # cloud to generate
@@ -398,6 +399,8 @@ if __name__ == '__main__':
     R1 = particle_cloud_params['R1']                       # Inner radius
     R2 = particle_cloud_params['R2']                       # Outer radius
     particle_cloud = ParticleSphericalCloud(n_particle, min_dist, R1, R2)
+  else:
+    particle_cloud = None
       
   # Extract filament cloud parameters
   filament_cloud_params = cloud_params['filament']
@@ -410,6 +413,8 @@ if __name__ == '__main__':
     R1 = filament_cloud_params['R1']                       # Inner radius
     R2 = filament_cloud_params['R2']                       # Outer radius
     filament_cloud = FilamentSphericalCloud(n_filament, n_chain, rest_length, min_dist, R1, R2)
+  else:
+    filament_cloud = None
     
   # Generate cloud
   cloud = FilamentParticleSphericalCloud(
@@ -420,4 +425,4 @@ if __name__ == '__main__':
       
   cloud.generate()
     
-  np.savetxt(cloud_type +'.pos', cloud.positions)
+  np.savetxt(working_directory+'/'+cloud_type +'.pos', cloud.positions)

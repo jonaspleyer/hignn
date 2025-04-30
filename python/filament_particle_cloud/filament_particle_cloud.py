@@ -145,7 +145,8 @@ if __name__ == '__main__':
     hignn.Init()
     
     # Load simulation parameters from JSON
-    with open("config.json", "r") as f:
+    working_directory = 'python/filament_particle_cloud'
+    with open(f"{working_directory}/config.json", "r") as f:
         config = json.load(f)
     
     simulation_params = config["simulation"]
@@ -168,7 +169,7 @@ if __name__ == '__main__':
     else:
         n_filament = n_chain = rest_length = k_t = k_b = 0
         
-    X = np.loadtxt(cloud_type +'.pos')
+    X = np.loadtxt(working_directory+'/'+cloud_type +'.pos')
     
     NN = X.shape[0]
     
@@ -192,10 +193,10 @@ if __name__ == '__main__':
     ite = 0
     
     t1 = time.time()
-
+    os.makedirs(f"{working_directory}/output/hdf5", exist_ok=True)
     for i in range(t_max):
         if i % t_meas == 0:
-            with h5py.File('output/pos'+str(int(i/t_meas))+'rank'+str(rank)+'.h5', 'w') as f:
+            with h5py.File(working_directory+'/output/hdf5/pos_rank_'+str(rank)+"_"+str(int(i/t_meas))+'.h5', 'w') as f:
                 f.create_dataset('pos', data=X[rank_range[rank]:rank_range[rank+1], :])
         
         tt1 = time.time()
@@ -204,12 +205,11 @@ if __name__ == '__main__':
             print("Time for velocity_update: {t:.4f}s".format(t = time.time() - tt1))
 
         if i % t_meas == 0:
-            with h5py.File('output/vel'+str(int(i/t_meas))+'rank'+str(rank)+'.h5', 'w') as f:
+            with h5py.File(working_directory+'/output/hdf5/vel_rank_'+str(rank)+"_"+str(int(i/t_meas))+'.h5', 'w') as f:
                 f.create_dataset('vel', data=V[rank_range[rank]:rank_range[rank+1], :])
         
         X = X + dt * V
-        ts = ts + dt          
-
+        ts = ts + dt        
     if rank == 0:
         print("Time for simulation: {t:.4f}s".format(t = time.time() - t1))
     
