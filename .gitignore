@@ -50,4 +50,6 @@ build/
 *.vtp
 *.h5
 
+*.pos
+
 Result/
