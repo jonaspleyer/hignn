@@ -25,36 +25,67 @@
 #include <vtkPointData.h>
 #include <vtkXMLPolyDataWriter.h>
 
+/**
+ * @class TimeIntegrator
+ * @brief Time-stepping driver for particulate suspension simulations.
+ *
+ * Manages the integration loop by:
+ *  - Calling a Python callback to compute particle velocities.
+ *  - Updating positions and orientations via Euler or RK4 schemes.
+ *  - Handling MPI partitioning and periodic boundary conditions.
+ *  - Exporting particle positions and velocities in VTK format for
+ * visualization.
+ */
 class __attribute__((visibility("default"))) TimeIntegrator {
 protected:
   int mMpiRank, mMpiSize;
 
-  int mFuncCount;
-  int mOutputStep;
-  std::size_t mNumRigidBody;
+  int mFuncCount;             //!< Count of integration steps already executed
+  int mOutputStep;            //!< Interval (in steps) between VTK outputs
+  std::size_t mNumRigidBody;  //!< Total number of particles in the simulation
 
   double mTimeStep;
-  double mFinalTime;
+  double mFinalTime;  // Simulation end time
 
-  bool mIsPeriodicBoundary;
+  bool mIsPeriodicBoundary;  //!< Enable or disable periodic boundary handling
 
-  std::string mOutputFilePrefix;
+  std::string mOutputFilePrefix;  //!< Directory/prefix for all output files
 
-  std::vector<Vec3> mPosition0;
-  std::vector<Quaternion> mOrientation0;
+  std::vector<Vec3> mPosition0;           // Initial particle positions
+  std::vector<Quaternion> mOrientation0;  // Initial particle orientations
 
-  std::vector<Vec3> mPosition;
-  std::vector<Quaternion> mOrientation;
+  std::vector<Vec3> mPosition;           // Current particle positions
+  std::vector<Quaternion> mOrientation;  // Current particle orientations
 
-  std::vector<Vec3> mVelocity;
-  std::vector<Vec3> mAngularVelocity;
+  std::vector<Vec3> mVelocity;  //!< Current linear velocities
+  std::vector<Vec3>
+      mAngularVelocity;  //!< Current angular velocities (unused by default)
 
-  Vec3 mDomainLimit[2];
-  std::vector<Vec3> mPositionOffset;
+  Vec3 mDomainLimit[2];  //!< [min,max] bounds for periodic wrapping
+  std::vector<Vec3>
+      mPositionOffset;  //!< Accumulated offsets to apply when wrapping
 
+  /**
+   * @brief Python callback to compute particle velocities.
+   * @param t [in] Current time
+   * @param position [in] Particle positions and orientations, size
+   * (num_particles, 6) with [x, y, z, roll, pitch, yaw].
+   * @return The updated linear velocities, size (num_particles, 3)
+   */
   std::function<pybind11::array_t<float>(float, pybind11::array_t<float>)>
       mVelocityUpdateFunc;
 
+  /**
+   * @brief Convert C++ particle positions and orientations into a Python array,
+   * invokes the Python velocity_update callback, and writes back the
+   * computed velocities.
+   * @param t [in] Current simulation time.
+   * @param position [in] Vector of particle positions, size (num_particles, 3).
+   * @param orientation [in] Vector of particle orientations (unused here).
+   * @param velocity [out] Output vector to be filled with each particle's
+   * linear velocity, size (num_particles, 3).
+   * @param angularVelocity [out] Output vector for angular velocities (unused).
+   */
   void VelocityUpdate(
       const float t,
       const std::vector<Vec3> &position,
@@ -69,6 +100,7 @@ protected:
     // deep copy
 #pragma omp parallel for schedule(static)
     for (std::size_t num = 0; num < mNumRigidBody; num++) {
+      // First three columns: positions
       for (int j = 0; j < 3; j++) {
         if (mIsPeriodicBoundary) {
           // periodic boundary condition
@@ -83,13 +115,15 @@ protected:
         } else
           inputData(num, j) = position[num][j];
       }
+
+      // Next three columns: Euler angles extracted from quaternion
       float row, pitch, yaw;
       mOrientation[num].to_euler_angles(row, pitch, yaw);
       inputData(num, 3) = row;
       inputData(num, 4) = pitch;
       inputData(num, 5) = yaw;
     }
-
+    // Invoke the Python callback: returns the array of velocities
     auto result = mVelocityUpdateFunc(t, input);
 
     auto result_data = result.unchecked<2>();
@@ -103,14 +137,21 @@ protected:
     }
   }
 
+  /**
+   * @brief Write VTK output for current particle positions and velocities.
+   *
+   * Each MPI rank writes its own .vtp file of the subset of particles it owns,
+   * and rank 0 also generates a .pvd collection file to reference all per-rank
+   * files.
+   */
   void Output(const std::string &outputFilename) {
+    // Build the per-rank filename
     std::string rankOutputFilename =
         outputFilename + "_Rank" + std::to_string(mMpiRank) + ".vtp";
     std::string fullRankOutputFilename = mOutputFilePrefix + rankOutputFilename;
-
+    // On rank 0, write the .pvd file that collects all .vtp pieces
     if (mMpiRank == 0) {
       std::ofstream pvdFile(mOutputFilePrefix + outputFilename + ".pvd");
-
       pvdFile << "<?xml version=\"1.0\"?>\n"
               << "<VTKFile type=\"Collection\" version=\"0.1\" "
                  "byte_order=\"LittleEndian\">\n"
@@ -127,11 +168,13 @@ protected:
       pvdFile.close();
     }
 
+    /** Compute this rank's particle range. */
     auto size = mPosition.size();
     size_t localSize = ceil((float)size / mMpiSize);
     size_t start = mMpiRank * localSize;
     size_t end = std::min(start + localSize, size);
 
+    // Set up VTK structures
     vtkSmartPointer<vtkPolyData> polyData = vtkSmartPointer<vtkPolyData>::New();
     vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
     vtkSmartPointer<vtkCellArray> vertices =
@@ -142,6 +185,7 @@ protected:
     velocityArray->SetNumberOfComponents(3);
     velocityArray->SetName("velocity");
 
+    // Insert each particle's point and velocity
     for (size_t i = start; i < end; i++) {
       vtkIdType pid[1];
 
@@ -153,7 +197,7 @@ protected:
       velocityArray->InsertNextTuple3(mVelocity[i][0], mVelocity[i][1],
                                       mVelocity[i][2]);
     }
-
+    // Assemble and write the .vtp file
     polyData->SetPoints(points);
     polyData->SetVerts(vertices);
     polyData->GetPointData()->AddArray(velocityArray);
@@ -171,6 +215,9 @@ protected:
   }
 
 public:
+  /**
+   * @brief Default constructor: set up MPI and default simulation parameters.
+   */
   TimeIntegrator()
       : mFuncCount(0),
         mOutputStep(1),
@@ -182,6 +229,7 @@ public:
     MPI_Comm_rank(MPI_COMM_WORLD, &mMpiRank);
     MPI_Comm_size(MPI_COMM_WORLD, &mMpiSize);
 
+    // Default periodic domain bounds: [-1,1] in x, y, z
     mDomainLimit[0][0] = -1;
     mDomainLimit[1][0] = 1;
     mDomainLimit[0][1] = -1;
@@ -190,14 +238,29 @@ public:
     mDomainLimit[1][2] = 1;
   }
 
+  /**
+   * @brief Set the integration time‐step.
+   * @param timeStep [in] New time‐step value.
+   */
   void SetTimeStep(const float timeStep) {
     mTimeStep = timeStep;
   }
 
+  /**
+   * @brief Set the simulation’s final time.
+   * @param finalTime [in] Time at which to stop the simulation.
+   */
   void SetFinalTime(const float finalTime) {
     mFinalTime = finalTime;
   }
 
+  /**
+   * @brief Set the total number of particles and allocate per-particle storage.
+   * @param numRigidBody [in] Total number of particles in the simulation.
+   *
+   * Resizes internal vectors to hold positions, orientations, velocities,
+   * and boundary offsets for each particle.
+   */
   void SetNumRigidBody(const std::size_t numRigidBody) {
     mNumRigidBody = numRigidBody;
 
@@ -213,12 +276,20 @@ public:
     mPositionOffset.resize(mNumRigidBody);
   }
 
+  /**
+   * @brief Register the Python velocity‐update callback.
+   * @param func [in] The Python function to call for computing velocities.
+   */
   void SetVelocityUpdateFunc(
       const std::function<
           pybind11::array_t<float>(float, pybind11::array_t<float>)> &func) {
     mVelocityUpdateFunc = func;
   }
 
+  /**
+   * @brief Enable periodic boundary in X using the given limits.
+   * @param xLim [in] Two‐element list specifying [xmin, xmax].
+   */
   void SetXLim(pybind11::list xLim) {
     mDomainLimit[0][0] = pybind11::cast<float>(xLim[0]);
     mDomainLimit[1][0] = pybind11::cast<float>(xLim[1]);
@@ -226,6 +297,10 @@ public:
     mIsPeriodicBoundary = true;
   }
 
+  /**
+   * @brief Enable periodic boundary in Y using the given limits.
+   * @param yLim [in] Two‐element list specifying [ymin, ymax].
+   */
   void SetYLim(pybind11::list yLim) {
     mDomainLimit[0][1] = pybind11::cast<float>(yLim[0]);
     mDomainLimit[1][1] = pybind11::cast<float>(yLim[1]);
@@ -233,6 +308,10 @@ public:
     mIsPeriodicBoundary = true;
   }
 
+  /**
+   * @brief Enable periodic boundary in Z using the given limits.
+   * @param zLim [in] Two‐element list specifying [zmin, zmax].
+   */
   void SetZLim(pybind11::list zLim) {
     mDomainLimit[0][2] = pybind11::cast<float>(zLim[0]);
     mDomainLimit[1][2] = pybind11::cast<float>(zLim[1]);
@@ -240,10 +319,23 @@ public:
     mIsPeriodicBoundary = true;
   }
 
+  /**
+   * @brief Configure how often to write output files.
+   * @param outputStep [in] Number of simulation steps between each VTK write.
+   */
   void SetOutputStep(const int outputStep) {
     mOutputStep = outputStep;
   }
 
+  /**
+   * @brief Initialize particle positions and orientations from Python.
+   * @param initPosition [in] Particle positions and orientations, size
+   * (num_particles, 6) with [x, y, z, roll, pitch, yaw] for each particle.
+   *
+   * Validates dimensions, then deep‐copies into internal storage:
+   *  - mPosition0, mOrientation0 as initial state
+   *  - mPosition, mOrientation for ongoing simulation
+   */
   void Init(pybind11::array_t<float> initPosition) {
     pybind11::buffer_info buf = initPosition.request();
 
@@ -270,6 +362,10 @@ public:
     }
   }
 
+  /**
+   * @brief Get the number of integration steps completed.
+   * @return  The current step count.
+   */
   int GetFuncCount() {
     return mFuncCount;
   }
@@ -277,12 +373,24 @@ public:
 
 // As one pybind11 object is stored in a shared library, it is necessary to
 // control the visibility of the object.
+/**
+ * @class ExplicitEuler
+ * @brief First-order explicit Euler time integrator for particle simulations.
+ *
+ * In each time step, this class:
+ *  - Computes velocity at t + dt via the Python callback.
+ *  - Updates particle positions by x += v * dt.
+ *  - Updates orientations via a quaternion rotation of magnitude dt.
+ *  - Applies periodic boundary corrections if enabled.
+ *  - Writes output at configured intervals.
+ */
 class __attribute__((visibility("default"))) ExplicitEuler
     : public TimeIntegrator {
 public:
   ExplicitEuler() {
   }
 
+  /** @brief Run the time integration until mFinalTime. */
   void Run() {
     mFuncCount = 0;
     double t = 0;
@@ -299,6 +407,7 @@ public:
 
       double dt = std::min(h0, mFinalTime - t);
 
+      // Fetch velocities at the upcoming time
       VelocityUpdate(t + dt, mPosition, mOrientation, mVelocity,
                      mAngularVelocity);
 
@@ -324,6 +433,7 @@ public:
 
       t += dt;
 
+      // Write output if it's the right step
       if (mFuncCount % mOutputStep == 0) {
         Output("output" + std::to_string(mFuncCount));
       }
@@ -338,6 +448,15 @@ public:
   }
 };
 
+/**
+ * @class ExplicitRk4
+ * @brief Adaptive Runge-Kutta-Fehlberg integrator for particle simulations.
+ *
+ * Implements a 7-stage RKF45 method with error control:
+ *  - Predefined coefficients (a_ij, b_i, dc_i, c_i) describe the scheme.
+ *  - Automatically adjusts dt to meet error threshold mThreshold.
+ *  - Supports periodic boundaries and VTK output as in TimeIntegrator.
+ */
 class __attribute__((visibility("default"))) ExplicitRk4
     : public TimeIntegrator {
 protected:
@@ -384,6 +503,7 @@ protected:
                       static_cast<float>(1),
                       static_cast<float>(1)};
 
+  // Storage for runge-kutta stages
   std::vector<Vec3> mVelocityK1;
   std::vector<Vec3> mVelocityK2;
   std::vector<Vec3> mVelocityK3;
@@ -400,12 +520,18 @@ protected:
   std::vector<Vec3> mAngularVelocityK6;
   std::vector<Vec3> mAngularVelocityK7;
 
-  double mThreshold;
+  double mThreshold;  //!< Error tolerance for adaptive stepping
 
 public:
   ExplicitRk4() : mThreshold(1e-3) {
   }
 
+  /**
+   * @brief Configure number of particles and allocate stage buffers.
+   * @param numRigidBody [in] Number of particles.
+   *
+   * Resizes all stage vectors (K1...K7) and angular stages to match.
+   */
   void SetNumRigidBody(std::size_t numRigidBody) {
     TimeIntegrator::SetNumRigidBody(numRigidBody);
 
@@ -425,7 +551,10 @@ public:
     mAngularVelocityK6.resize(mNumRigidBody);
     mAngularVelocityK7.resize(mNumRigidBody);
   }
-
+  /**
+   * @brief Set the maximum allowed local error for adaptive RK.
+   * @param threshold [in] Desired error tolerance per time step.
+   */
   void SetThreshold(double threshold) {
     mThreshold = threshold;
   }
@@ -435,16 +564,19 @@ public:
     double t = 0;
     double h0 = mTimeStep;
 
+    // initial velocity evaluation at t=0
     VelocityUpdate(t, mPosition, mOrientation, mVelocity, mAngularVelocity);
 
+    // main time‐stepping loop
     while (t < mFinalTime - 1e-5) {
       if (mMpiRank == 0) {
         std::cout << "--------------------------------" << std::endl;
         printf("Time: %.6f, dt: %.6f\n", t, h0);
       }
-
+      // choose dt so we never overshoot final time
       double dt = std::min(h0, mFinalTime - t);
 
+// copy current state into “base” arrays before stages
 #pragma omp parallel for schedule(static)
       for (std::size_t num = 0; num < mNumRigidBody; num++) {
         if (mIsPeriodicBoundary)
