@@ -46,18 +46,13 @@ ENV _GLIBCXX_USE_CXX11_ABI=1
 RUN cd /opt/ && \
     git clone --recursive https://github.com/pytorch/pytorch && \
     cd pytorch && \
-    git checkout v2.6.0
-    git checkout v2.6.0
+    git checkout v2.5.0
 RUN cd /opt/pytorch && \
     pip3 install --upgrade --upgrade-strategy eager -r requirements.txt && \
-    pip3 install --upgrade cmake==3.31.4==3.31.4 && \
+    pip3 install --upgrade cmake && \
     git submodule sync && \
     git submodule update --init --recursive && \
-    MAX_JOB=$(nproc) TORCH_CUDA_ARCH_LIST="8.6" BUILD_CAFFE2=OFF BUILD_LITE_INTERPRETER=OFF python3 setup.py develop
-
-ENV PYTHONPATH=/opt/pytorch:$PYTHONPATH
-ENV LibTorch_PATH=/opt/libtorch
-    MAX_JOB=$(nproc) TORCH_CUDA_ARCH_LIST="8.6" BUILD_CAFFE2=OFF BUILD_LITE_INTERPRETER=OFF python3 setup.py develop
+    CMAKE_PREFIX_PATH="$(python3 -c "import site; print(site.getsitepackages()[0])")/" MAX_JOB=$(nproc) TORCH_CUDA_ARCH_LIST="8.6" BUILD_CAFFE2=OFF BUILD_LITE_INTERPRETER=OFF CMAKE_POLICY_VERSION_MINIMUM=3.5 python3 setup.py develop
 
 ENV PYTHONPATH=/opt/pytorch:$PYTHONPATH
 ENV LibTorch_PATH=/opt/libtorch
@@ -71,6 +66,7 @@ ENV PATH="${PATH}:/opt/openmpi/bin"
 ENV OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
 ENV OMPI_ALLOW_RUN_AS_ROOT=1
 ENV Kokkos_PATH=/opt/kokkos
+ENV LibTorch_PATH=/opt/libtorch
 
 ENV OMP_PROC_BIND=spread
 ENV OMP_PLACES=sockets
