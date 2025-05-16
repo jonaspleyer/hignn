@@ -31,10 +31,6 @@ void Init() {
 #endif
 
   Kokkos::initialize(settings);
-
-#ifdef USE_GPU
-  Kokkos::Impl::CudaInternal::m_cudaDev = mpiRank % deviceCount;
-#endif
 }
 
 void Finalize() {
