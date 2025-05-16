@@ -8,18 +8,12 @@ if __name__ == '__main__':
     
     os.system('clear')
     
-    is_gpu_available = False
-        
-    try:
-        subprocess.check_output('nvidia-smi')
-        is_gpu_available = True
-    except Exception as e:
-        pass
+    is_gpu_available = torch.cuda.is_available()
     
     parser = argparse.ArgumentParser(description='build')
     
     parser.add_argument('--rebuild', action='store_true', help='Rebuild the project')
-    parser.add_argument('--model', type=str, default='3D_force_UB_max600_try2', help='Model name')
+    parser.add_argument('--model', type=str, default='two_body_unbounded', help='Model name')
     
     args, unknown = parser.parse_known_args()
     
@@ -83,6 +77,3 @@ if __name__ == '__main__':
         os.chdir('Result')
     except:
         os.mkdir('Result')
-    # is_results_existing = os.path.exists('results')
-    # if not is_results_existing:
-    #     os.mkdir('results')
