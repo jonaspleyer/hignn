@@ -71,9 +71,9 @@ class Two_body_self_net(torch.nn.Module):
         return y
 
 # Define the forward of three
-class HIGNN_model(torch.nn.Module):
+class HIGNN_mdoel(torch.nn.Module):
     def __init__(self, nn_2body, nn_3body, nn_self):
-        super(HIGNN_model, self).__init__()
+        super(HIGNN_mdoel, self).__init__()
         self.nn_2body = nn_2body
         self.nn_3body = nn_3body
         self.nn_self = nn_self
