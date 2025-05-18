@@ -66,6 +66,7 @@ class PostProcessor:
             print(f"Converting HDF5 files to VTP files..")
 
         working_directory = os.path.dirname(os.path.abspath(__file__))
+        max_rank == None
         # Total number of steps
         while True:
             move_forward = True
@@ -73,19 +74,36 @@ class PostProcessor:
             velocity_array = None
 
             # Load HDF5 data from all MPI ranks
-            for rank in range(1):
-                try:
-                    points_array_rank = h5py.File(f'{working_directory}/output/hdf5/pos_rank_{rank}_{N}.h5', 'r')['pos'][:]
-                    velocity_array_rank = h5py.File(f'{working_directory}/output/hdf5/vel_rank_{rank}_{N}.h5', 'r')['vel'][:]
-                    if points_array is None:
-                        points_array = points_array_rank
-                        velocity_array = velocity_array_rank
-                    else:
-                        points_array = np.concatenate((points_array, points_array_rank), axis=0)
-                        velocity_array = np.concatenate((velocity_array, velocity_array_rank), axis=0)
-                except:
-                    move_forward = False
-                    break
+            if max_rank == None:
+                max_rank = 0
+                while True:
+                    try:
+                        points_array_rank = h5py.File(f'{working_directory}/output/hdf5/pos_rank_{rank}_{N}.h5', 'r')['pos'][:]
+                        velocity_array_rank = h5py.File(f'{working_directory}/output/hdf5/vel_rank_{rank}_{N}.h5', 'r')['vel'][:]
+                        if points_array is None:
+                            points_array = points_array_rank
+                            velocity_array = velocity_array_rank
+                        else:
+                            points_array = np.concatenate((points_array, points_array_rank), axis=0)
+                            velocity_array = np.concatenate((velocity_array, velocity_array_rank), axis=0)
+                    except:
+                        break
+                    
+                    max_rank += 1
+            else:
+                for rank in range(max_rank):
+                    try:
+                        points_array_rank = h5py.File(f'{working_directory}/output/hdf5/pos_rank_{rank}_{N}.h5', 'r')['pos'][:]
+                        velocity_array_rank = h5py.File(f'{working_directory}/output/hdf5/vel_rank_{rank}_{N}.h5', 'r')['vel'][:]
+                        if points_array is None:
+                            points_array = points_array_rank
+                            velocity_array = velocity_array_rank
+                        else:
+                            points_array = np.concatenate((points_array, points_array_rank), axis=0)
+                            velocity_array = np.concatenate((velocity_array, velocity_array_rank), axis=0)
+                    except:
+                        move_forward = False
+                        break
 
             if not move_forward:
                 break
