@@ -90,6 +90,7 @@ class PostProcessor:
                         break
                     
                     max_rank += 1
+                    print(f'Max rank number: {max_rank}')
             else:
                 for rank in range(max_rank):
                     try:
