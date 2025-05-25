@@ -30,9 +30,10 @@ def chain_bending(X, k_b):
     """
     N = X.shape[0]
     F = np.zeros((N, 3))
-
     arm1 = X[1:(N - 1), :] - X[0:(N - 2), :]
     arm2 = X[2:N, :] - X[1:(N - 1), :]
+    
+    
     arm1_norm = np.linalg.norm(arm1, ord=2, axis=1).reshape((-1, 1))
     arm2_norm = np.linalg.norm(arm2, ord=2, axis=1).reshape((-1, 1))
     arm1 = arm1 / arm1_norm
@@ -133,8 +134,12 @@ def velocity_update(hignn_model, t, position, b, n_filament, n_chain, rest_lengt
     # Filaments
     if (n_filament > 0):
         for i in range(n_filament):
-            force[n_chain * i:n_chain * i + n_chain, :] += chain_bending(position[n_chain * i:n_chain * i + n_chain, :], k_b)
-            force[n_chain * i:n_chain * i + n_chain, :] += chain_tension(position[n_chain * i:n_chain * i + n_chain, :], k_t, rest_length)
+            print("position shape is ", position.shape)
+            pos = position[n_chain * i : n_chain * i + n_chain, :]
+            pos3 = pos[:, :3] 
+            print("pos3 shape is ", pos3.shape)
+            force[n_chain * i:n_chain * i + n_chain, :] += chain_bending(pos3, k_b)
+            force[n_chain * i:n_chain * i + n_chain, :] += chain_tension(pos3, k_t, rest_length)
     
     hignn_model.dot(velocity, force)
     
@@ -217,6 +222,7 @@ class Simulator:
         return V
     
     def output_hdf5(self, position, velocity):
+        os.makedirs(self.working_directory+'/output/hdf5', exist_ok=True)
         with h5py.File(self.working_directory+'/output/hdf5/pos_rank_'+str(rank)+"_"+str(self.output_counter)+'.h5', 'w') as f:
             f.create_dataset('pos', data=position[self.rank_range[rank]:self.rank_range[rank+1], :])
         
