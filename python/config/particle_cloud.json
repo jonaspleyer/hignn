@@ -1,17 +1,16 @@
 {
     "cloud": {
         "type": "particle_cloud",
-        "_type": "Type of cloud to generate (options: 'filament_cloud', 'particle_cloud', 'filament_particle_cloud')",
         "particle": {
             "n_particle": 21504,
             "min_dist": 2.1,
             "R1": 0.0,
-            "R2": 240.0,
-            "_description": "Parameters related to the particle cloud"
+            "R2": 240.0
         },
         "seed": 0
     },
     "simulation": {
+        "time_integrator": "Explicit Euler",
         "body_force": [
             0.0,
             0.0,
@@ -19,8 +18,8 @@
         ],
         "dt": 0.1,
         "t_max": 0.1,
-        "t_meas": 100,
-        "_description": "Parameters related to the simulation"
+        "t_meas": 100
+        
     },
     "model": {
         "two_body_model": "nn/two_body_unbounded"
