@@ -134,10 +134,8 @@ def velocity_update(hignn_model, t, position, b, n_filament, n_chain, rest_lengt
     # Filaments
     if (n_filament > 0):
         for i in range(n_filament):
-            print("position shape is ", position.shape)
             pos = position[n_chain * i : n_chain * i + n_chain, :]
             pos3 = pos[:, :3] 
-            print("pos3 shape is ", pos3.shape)
             force[n_chain * i:n_chain * i + n_chain, :] += chain_bending(pos3, k_b)
             force[n_chain * i:n_chain * i + n_chain, :] += chain_tension(pos3, k_t, rest_length)
     
