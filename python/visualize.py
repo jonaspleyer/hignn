@@ -41,34 +41,39 @@ class PostProcessor:
         with open(f"{config_filename}", "r") as f:
             config = json.load(f)
 
-            simulation_params = config["simulation"]
+        simulation_params = config["simulation"]
+        n_total = simulation_params["t_max"]
+        cloud_params = config['cloud']
+        cloud_type = cloud_params['type']
+        particle_cloud_params = cloud_params.get('particle')
+        filament_cloud_params = cloud_params.get('filament')
 
-            cloud_params = config['cloud']
-            cloud_type = cloud_params['type']
-            particle_cloud_params = cloud_params.get('particle')
-            filament_cloud_params = cloud_params.get('filament')
+        if particle_cloud_params:
+            n_particle = particle_cloud_params['n_particle']
+        else:
+            n_particle = 0
 
-            if particle_cloud_params:
-                n_particle = particle_cloud_params['n_particle']
-            else:
-                n_particle = 0
+        if filament_cloud_params:
+            n_filament = filament_cloud_params['n_filament']
+            n_chain = filament_cloud_params['n_chain']
+            rest_length = filament_cloud_params['rest_length']
+            k_t = filament_cloud_params['k_t']
+            k_b = filament_cloud_params['k_b']
+            len_fiber = n_filament * (n_chain - 1)
+        else:
+            n_filament = n_chain = rest_length = k_t = k_b = 0
 
-            if filament_cloud_params:
-                n_filament = filament_cloud_params['n_filament']
-                n_chain = filament_cloud_params['n_chain']
-                rest_length = filament_cloud_params['rest_length']
-                k_t = filament_cloud_params['k_t']
-                k_b = filament_cloud_params['k_b']
-                len_fiber = n_filament * (n_chain - 1)
-            else:
-                n_filament = n_chain = rest_length = k_t = k_b = 0
-
-            print(f"Converting HDF5 files to VTP files..")
+        print(f"Converting HDF5 files to VTP files..")
 
         working_directory = os.path.dirname(os.path.abspath(__file__))
-        max_rank == None
+        max_rank = None
         # Total number of steps
-        while True:
+        
+        for N in range(0, n_total):
+            # Initialize arrays for points and velocity
+            points_array = None
+            velocity_array = None
+            lines_array = None
             move_forward = True
             points_array = None
             velocity_array = None
@@ -76,6 +81,7 @@ class PostProcessor:
             # Load HDF5 data from all MPI ranks
             if max_rank == None:
                 max_rank = 0
+                rank = 0
                 while True:
                     try:
                         points_array_rank = h5py.File(f'{working_directory}/output/hdf5/pos_rank_{rank}_{N}.h5', 'r')['pos'][:]
@@ -86,10 +92,12 @@ class PostProcessor:
                         else:
                             points_array = np.concatenate((points_array, points_array_rank), axis=0)
                             velocity_array = np.concatenate((velocity_array, velocity_array_rank), axis=0)
-                    except:
+                    except Exception as e:
+                        print(f"Error reading file for N={N}, rank={rank}: {e}")
                         break
                     
                     max_rank += 1
+                    rank += 1
                     print(f'Max rank number: {max_rank}')
             else:
                 for rank in range(max_rank):
@@ -103,10 +111,12 @@ class PostProcessor:
                             points_array = np.concatenate((points_array, points_array_rank), axis=0)
                             velocity_array = np.concatenate((velocity_array, velocity_array_rank), axis=0)
                     except:
+                        print("break2")
                         move_forward = False
                         break
 
             if not move_forward:
+                print("break2")
                 break
 
             # Split data into filament and particle parts
