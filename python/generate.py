@@ -3,6 +3,7 @@ import numpy as np
 import scipy.spatial as KDTreed
 import json
 import time
+import os
 
 class ParticleSphericalCloud:
   """
@@ -431,4 +432,7 @@ class CloudGenerator:
         
     cloud.generate()
     
-    np.savetxt('cloud/' + cloud_type +'.pos', cloud.positions)
+    dir_name = './python/cloud'
+    file_name = os.path.join(dir_name, cloud_type + '.pos')
+    os.makedirs(dir_name, exist_ok=True)
+    np.savetxt(file_name, cloud.positions)
