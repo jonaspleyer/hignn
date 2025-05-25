@@ -42,7 +42,7 @@ class PostProcessor:
             config = json.load(f)
 
         simulation_params = config["simulation"]
-        n_total = simulation_params["t_max"]
+        n_total = int((simulation_params["t_max"] / simulation_params["dt"])) // simulation_params["t_meas"]
         cloud_params = config['cloud']
         cloud_type = cloud_params['type']
         particle_cloud_params = cloud_params.get('particle')
@@ -93,7 +93,7 @@ class PostProcessor:
                             points_array = np.concatenate((points_array, points_array_rank), axis=0)
                             velocity_array = np.concatenate((velocity_array, velocity_array_rank), axis=0)
                     except Exception as e:
-                        print(f"Error reading file for N={N}, rank={rank}: {e}")
+                        # print(f"Error reading file for N={N}, rank={rank}: {e}")
                         break
                     
                     max_rank += 1
