@@ -197,6 +197,9 @@ class Simulator:
         self.hignn_model.set_max_far_dot_work_node_size(10000)
         self.hignn_model.set_max_relative_coord(100000)
         
+        # Start timing the entire simulation
+        t1 = time.time()
+        
         time_integrator = hignn.ExplicitEuler()
     
         time_integrator.set_time_step(self.dt)
@@ -209,6 +212,11 @@ class Simulator:
         time_integrator.initialize(X)
         time_integrator.run()
         
+        # Print total simulation time (only for rank 0)
+        if rank == 0:
+            print("--------------------------------")
+            print("Time for simulation: {t:.2f} s".format(t=time.time() - t1))
+            
         del self.hignn_model
         
         # Finalize hignn
