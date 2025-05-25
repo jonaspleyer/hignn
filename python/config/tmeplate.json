@@ -61,8 +61,8 @@
         "dt": 0.005,
         "_dt": "Time step size for the simulation",
 
-        "t_max": 10000,
-        "_t_max": "Maximum number of time steps to run the simulation",
+        "t_max": 10.0,
+        "_t_max": "Final time for the simulation",
 
         "t_meas": 100,
         "_t_meas": "Measurement interval: how often (in time steps) to record output data",
