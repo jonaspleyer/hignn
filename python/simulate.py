@@ -151,10 +151,12 @@ class Simulator:
             config = json.load(f)
         
         simulation_params = config["simulation"]
-        self.b = simulation_params["body_force"]             # Body force
-        self.dt = simulation_params["dt"]                    # Time step
-        self.t_max = simulation_params["t_max"]              # Final time
-        self.t_meas = simulation_params["t_meas"]
+        self.time_integrator = simulation_params["time_integrator"]  # Time integration method
+        self.b = simulation_params["body_force"]                     # Constant body force
+        self.dt = simulation_params["dt"]                            # Time step size
+        self.t_max = simulation_params["t_max"]                      # Total simulation time
+        self.t_meas = simulation_params["t_meas"]                    # Interval for outputting data
+
         
         # Load cloud parameters from JSON
         cloud_params = config['cloud']
@@ -200,7 +202,12 @@ class Simulator:
         # Start timing the entire simulation
         t1 = time.time()
         
-        time_integrator = hignn.ExplicitEuler()
+        if self.time_integrator == "Explicit Euler":
+            time_integrator = hignn.ExplicitEuler()
+        elif self.time_integrator == "Explicit RK4":
+            time_integrator = hignn.ExplicitRk4()
+        else:
+            raise ValueError(f"Unknown time integrator: {self.time_integrator}")
     
         time_integrator.set_time_step(self.dt)
         time_integrator.set_final_time(self.t_max)
