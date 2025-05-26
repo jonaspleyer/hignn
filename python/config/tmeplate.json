@@ -53,7 +53,7 @@
 
     "simulation": {
         "time_integrator": "Explicit Euler",
-        "_time_integrator": "Time integration method for simulation (Options: 'Explicit Euler', 'RK4')",
+        "_time_integrator": "Time integration method for simulation (Options: 'Explicit Euler', 'Explicit RK4')",
 
         "body_force": [0.0, 0.0, -1.0],
         "_body_force": "External body force vector applied to all particles (e.g., gravity)",
