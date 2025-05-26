@@ -23,7 +23,7 @@
             "n_filament": 1,
             "_n_filament": "Number of filaments",
 
-            "n_chain": 21,
+            "n_chain": 11,
             "_n_chain": "Number of particles per filament chain",
 
             "rest_length": 3,
@@ -61,10 +61,10 @@
         "dt": 0.005,
         "_dt": "Time step size for the simulation",
 
-        "t_max": 10.0,
+        "t_max": 0.1,
         "_t_max": "Final time for the simulation",
 
-        "t_meas": 100,
+        "t_meas": 2,
         "_t_meas": "Measurement interval: how often (in time steps) to record output data",
 
         "_description": "Simulation configuration parameters"
