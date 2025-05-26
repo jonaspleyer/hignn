@@ -1,0 +1,87 @@
+import numpy as np
+import subprocess
+import pytest
+import json
+import shutil
+import os
+
+# Test that engine.py fails to run without a config file
+def test_cant_run_without_config():
+    result = subprocess.run(
+        ["python3", "python/engine.py", "--generate"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+    print("\nStderr:", result.stderr)
+
+    assert result.returncode !=0
+    
+# Test that cloud generation works correctly
+def test_can_generate_correctly():
+    process = subprocess.Popen(
+        ["python3", "python/engine.py", "python/config/template.json", "--generate"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1
+    )
+    
+    for line in process.stdout:
+        print(line, end="") 
+    
+    process.stdout.close()  
+    process.wait()
+    print("\nStderr:", process.stderr)
+        
+    # Parse config
+    with open("python/config/template.json", "r") as f:
+        config = json.load(f)
+
+    cloud_params = config['cloud']
+    filament_cloud_params = cloud_params.get('filament')
+    particle_cloud_params = cloud_params.get('particle')
+
+    n_filament = filament_cloud_params.get('n_filament', 0) if filament_cloud_params else 0
+    n_chain = filament_cloud_params.get('n_chain', 0) if filament_cloud_params else 0
+    n_particle = particle_cloud_params.get('n_particle', 0) if particle_cloud_params else 0
+
+    expected_count = n_filament * n_chain + n_particle
+
+    # Load generated .pos file
+    positions = np.loadtxt("python/cloud/filament_particle_cloud.pos")
+
+    assert positions.shape[0] == expected_count
+    
+# Test that simulation works correctly
+def test_can_simulate_correctly():
+    process = subprocess.Popen(
+        ["python3", "python/engine.py", "python/config/template.json", "--simulate"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1
+    )
+    
+    for line in process.stdout:
+        print(line, end="") 
+         
+    process.stdout.close()  
+    process.wait()
+    print("\nStderr:", process.stderr)
+        
+    assert process.returncode == 0
+    
+# Test that visualization works correctly
+def test_can_visualize_correctly():
+    process = subprocess.run(
+        ["python3", "python/engine.py", "python/config/template.json", "--visualize"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    
+    print(process.stdout, end="")
+    print("\nStderr:", process.stderr)
+    
+    assert process.returncode == 0
