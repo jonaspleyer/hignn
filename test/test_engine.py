@@ -20,7 +20,7 @@ def test_cant_run_without_config():
 # Test that cloud generation works correctly
 def test_can_generate_correctly():
     process = subprocess.Popen(
-        ["python3", "python/engine.py", "python/config/template.json", "--generate"],
+        ["python3", "python/engine.py", "python/config/config_template.json", "--generate"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -35,7 +35,7 @@ def test_can_generate_correctly():
     print("\nStderr:", process.stderr)
         
     # Parse config
-    with open("python/config/template.json", "r") as f:
+    with open("python/config/config_template.json", "r") as f:
         config = json.load(f)
 
     cloud_params = config['cloud']
@@ -56,7 +56,7 @@ def test_can_generate_correctly():
 # Test that simulation works correctly
 def test_can_simulate_correctly():
     process = subprocess.Popen(
-        ["python3", "python/engine.py", "python/config/template.json", "--simulate"],
+        ["python3", "python/engine.py", "python/config/config_template.json", "--simulate"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -75,7 +75,7 @@ def test_can_simulate_correctly():
 # Test that visualization works correctly
 def test_can_visualize_correctly():
     process = subprocess.run(
-        ["python3", "python/engine.py", "python/config/template.json", "--visualize"],
+        ["python3", "python/engine.py", "python/config/config_template.json", "--visualize"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

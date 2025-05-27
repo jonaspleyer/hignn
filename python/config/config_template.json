@@ -16,7 +16,7 @@
             "R2": 300.0,
             "_R2": "Outer radius for spherical shell distribution",
 
-            "_description": "Parameters related to the particle cloud"
+            "_description": "Parameters related to the particle cloud (can be ignored if there are no particles in the simulation)"
         },
 
         "filament": {
@@ -44,7 +44,7 @@
             "k_b": 50,
             "_k_b": "Bending stiffness parameter for filaments",
 
-            "_description": "Parameters related to the filament cloud"
+            "_description": "Parameters related to the filament cloud (can be ignored if there are no filaments in the simulation)"
         },
 
         "seed": 0,
