@@ -482,6 +482,8 @@ public:
       for (std::size_t num = 0; num < mNumRigidBody; num++) {
         if (mIsPeriodicBoundary)
           mPosition0[num] = mPosition[num] + mPositionOffset[num];
+        else
+          mPosition0[num] = mPosition[num];
         mOrientation0[num] = mOrientation[num];
       }
 
