@@ -3,8 +3,11 @@ import argparse
 from generate import CloudGenerator
 from simulate import Simulator
 from visualize import PostProcessor
+from mpi4py import MPI
 
 os.system('clear')
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -16,12 +19,15 @@ if __name__ == '__main__':
     args, unknown = parser.parse_known_args()
     
     if args.config == None:
-        print('Please input config file')
+        if rank == 0:
+            print('Please input config file')
     else:
-        print(f'Parsing config file: {args.config}')
+        if rank == 0:
+            print(f'Parsing config file: {args.config}')
     
     if args.generate:
-        generator = CloudGenerator(args.config)
+        if rank == 0:
+            generator = CloudGenerator(args.config)
     
     if args.simulate:
         simulator = Simulator(args.config)
@@ -29,4 +35,5 @@ if __name__ == '__main__':
         simulator.run()
     
     if args.visualize:
-        post_processor = PostProcessor(args.config)
+        if rank == 0:
+            post_processor = PostProcessor(args.config)
