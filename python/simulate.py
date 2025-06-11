@@ -129,7 +129,7 @@ def velocity_update(hignn_model, t, position, b, n_filament, n_chain, rest_lengt
     hignn_model.update_coord(position[:, 0:3])
     velocity = np.zeros((position.shape[0], 3), dtype=np.float32)
     force = np.zeros((position.shape[0], 3), dtype=np.float32)
-    force[:, 2] = b[2]
+    force += b
     
     # Filaments
     if (n_filament > 0):
@@ -218,6 +218,43 @@ class Simulator:
         time_integrator.set_velocity_func(self.velocity_update_wrapper)
         time_integrator.initialize(X)
         time_integrator.run()
+        
+        """
+                # Initialize simulation time and iteration counter
+        ts = 0        # Initial time
+        ite = 0       # Iteration counter
+        os.makedirs(self.working_directory+'/output/hdf5', exist_ok=True)
+        
+        # Main simulation loop
+        for i in range(int(self.t_max/self.dt)):
+
+            # Every 100 iterations, save particle positions to an HDF5 file
+            if i % self.t_meas == 0:
+                with h5py.File(f'{self.working_directory}/output/hdf5/pos_rank_{rank}_{self.output_counter}.h5', 'w') as f:
+                    f.create_dataset('pos', data=X[self.rank_range[rank]:self.rank_range[rank+1], :])
+
+            # Measure time for velocity update step
+            tt1 = time.time()
+            V = self.velocity_update_wrapper(ts, X)
+
+            # Print velocity update time only on rank 0 (to avoid redundant logging)
+            if rank == 0:
+                print("Time for velocity_update: {t:.4f}s".format(t=time.time() - tt1))
+
+            # Every 100 iterations, save particle velocities to an HDF5 file
+            if i % self.t_meas == 0:
+                with h5py.File(f'{self.working_directory}/output/hdf5/vel_rank_{rank}_{self.output_counter}.h5', 'w') as f:
+                    f.create_dataset('vel', data=V[self.rank_range[rank]:self.rank_range[rank+1], :])
+                self.output_counter += 1
+
+            # Update particle positions using velocity
+            X = X + self.dt * V
+
+            # Advance simulation time
+            ts = ts + self.dt
+        """
+
+            
         
         # Print total simulation time (only for rank 0)
         if rank == 0:
