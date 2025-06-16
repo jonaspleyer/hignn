@@ -1,20 +1,24 @@
 #include "HignnModel.hpp"
 
+//!< Kokkos reduction for array data
 struct ArrReduce {
   double values[6];
 
+  // Initializes all values to zero
   KOKKOS_INLINE_FUNCTION ArrReduce() {
     for (int i = 0; i < 6; i++) {
       values[i] = 0;
     }
   }
 
+  // Copy constructor
   KOKKOS_INLINE_FUNCTION ArrReduce(const ArrReduce &rhs) {
     for (int i = 0; i < 6; i++) {
       values[i] = rhs.values[i];
     }
   }
 
+  // Addition operator for Kokkos reductions
   KOKKOS_INLINE_FUNCTION ArrReduce &operator+=(const ArrReduce &src) {
     for (int i = 0; i < 6; i++) {
       values[i] += src.values[i];
@@ -33,19 +37,40 @@ struct reduction_identity<ArrReduce> {
 };
 }  // namespace Kokkos
 
-// Flag used for determinant check
-#define FarDotDeterminantCheck
-
-// Flag used for post check the velocity
-#define FarDotVelocityCheck
+/**
+ * @brief Evaluates the updated velocity due to far-range hydrodynamic
+ *        interactions with the input acting forces.
+ *
+ * This function handles the parallel computation of interactions between node
+ * pairs that are marked as `far` on the clustering tree. The workload is
+ * divided into adaptive batches to control the maximum memory usage. Kokkos is
+ * used for parallel execution. The function dynamically adjusts the batch size
+ * based on the estimated workload and then:
+ *   - Builds C- and Q-matrices by querying the two-body model with each pair’s
+ *     relative coordinates.
+ *   - Applies a low-rank stopping criterion using an adaptive iterative process
+ *     inspired by the power-iteration method.
+ *   - Accumulates the contributions into the velocity array (u += C·(Q·f)),
+ *     with optional symmetry-based updates.
+ *
+ * @param u [in, out] A 2D array of size (num_particles, 3) representing the
+ * velocities of the particles. The velocities are incremented by the resulting
+ * velocity contributions due to the far-range hydrodynamic interactions with
+ * respect to the acting forces.
+ * @param f [in] A 2D array of size (num_particles, 3) representing the forces
+ * applied to the particles.
+ */
 
 void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
   std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+  //!< Captures the current time to start measuring elapsed time for performance
+  //!< tracking.
 
   if (mMPIRank == 0)
     std::cout << "start of FarDot" << std::endl;
   MPI_Barrier(MPI_COMM_WORLD);
 
+  // Timing variables for profiling different parts of the algorithm.
   double queryDuration = 0.0;
   double dotDuration = 0.0;
   double ckNormalizationDuration = 0.0;
@@ -53,71 +78,111 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
   double stopCriterionDuration = 0.0;
   double resetDuration = 0.0;
 
+  // Variables to track the number of queries, total iterations, and max inner
+  // iterations.
   std::size_t totalNumQuery = 0;
   std::size_t totalNumIter = 0;
   int innerNumIter = 0;
   int maxInnerNumIter = 0;
 
+  // Constants and working array sizes for batch and matrix pool management.
   const int maxRelativeCoord = mMaxRelativeCoord;
   const int matPoolSize = maxRelativeCoord * mMatPoolSizeFactor;
   const int maxWorkNodeSize = mMaxFarDotWorkNodeSize;
   const int maxIter = mMaxIter;
   const int middleMatPoolSize = maxWorkNodeSize * maxIter;
-  int workNodeSize = 0;
-  int allowedWorkload = 0;
+  int workNodeSize = 0;     //!< Number of node pairs in current batch.
+  int allowedWorkload = 0;  //!< Maximum workload allowed in current batch.
 
   const bool postCheck = false;
 
-  DeviceFloatVector relativeCoordPool("relativeCoordPool",
-                                      maxRelativeCoord * 3);
-  DeviceDoubleMatrix cMatPool("cMatPool", matPoolSize, 9);
-  DeviceDoubleMatrix qMatPool("qMatPool", matPoolSize, 9);
-  DeviceDoubleVector middleMatPool("middleMatPool", middleMatPoolSize * 3);
-  DeviceDoubleMatrix ckMatPool("ckMatPool", maxRelativeCoord, 9);
-  DeviceDoubleMatrix ckInvMatPool("ckInvMatPool", maxWorkNodeSize, 9);
+  // Device arrays and matrix pools for intermediate computation and batching.
+  DeviceFloatVector relativeCoordPool(
+      "relativeCoordPool",
+      maxRelativeCoord *
+          3);  //!< Stores the relative coordinates of the particles.
+  DeviceDoubleMatrix cMatPool("cMatPool", matPoolSize,
+                              9);  //!< Pool for C matrices.
+  DeviceDoubleMatrix qMatPool("qMatPool", matPoolSize,
+                              9);  //!< Pool for Q matrices.
+  DeviceDoubleVector middleMatPool(
+      "middleMatPool",
+      middleMatPoolSize * 3);  //!< Middle matrix pool for accumulation.
+  DeviceDoubleMatrix ckMatPool("ckMatPool", maxRelativeCoord,
+                               9);  //!< Temporary C matrices.
+  DeviceDoubleMatrix ckInvMatPool("ckInvMatPool", maxWorkNodeSize,
+                                  9);  //!< Inverses of temporary C matrices.
 
-  DeviceIntVector workingNode("workingNode", maxWorkNodeSize);
-  DeviceIntVector dotProductNode("dotProductNode", maxWorkNodeSize);
-  DeviceIntVector dotProductRank("dotProductRank", maxWorkNodeSize);
-  DeviceIntVector stopNode("stopNode", maxWorkNodeSize);
-  DeviceIntMatrix workingNodeCMatOffset("workingNodeCMatOffset",
-                                        maxWorkNodeSize, maxIter);
-  DeviceIntMatrix workingNodeQMatOffset("workingNodeQMatOffset",
-                                        maxWorkNodeSize, maxIter);
+  DeviceIntVector workingNode(
+      "workingNode",
+      maxWorkNodeSize);  //!< Holds node indices for the current batch.
+  DeviceIntVector dotProductNode(
+      "dotProductNode",
+      maxWorkNodeSize);  //!< Nodes for dot product in final step.
+  DeviceIntVector dotProductRank(
+      "dotProductRank", maxWorkNodeSize);  //!< Ranks for dot product nodes.
+  DeviceIntVector stopNode(
+      "stopNode", maxWorkNodeSize);  //!< Flags to signal stopping criterion.
+  DeviceIntMatrix workingNodeCMatOffset(
+      "workingNodeCMatOffset", maxWorkNodeSize,
+      maxIter);  //!< Offset in cMatPool for each working node and each
+                 //!< iteration.
+  DeviceIntMatrix workingNodeQMatOffset(
+      "workingNodeQMatOffset", maxWorkNodeSize,
+      maxIter);  //!< Offset in qMatPool for each working node and each
+                 //!< iteration.
   DeviceIntMatrix workingNodeSelectedColIdx("workingNodeSelectedColIdx",
-                                            maxWorkNodeSize, maxIter);
+                                            maxWorkNodeSize,
+                                            maxIter);  //!< Column indices used.
   DeviceIntMatrix workingNodeSelectedRowIdx("workingNodeSelectedRowIdx",
-                                            maxWorkNodeSize, maxIter);
-  DeviceIntVector workingNodeIteration("workingNodeIteration", maxWorkNodeSize);
+                                            maxWorkNodeSize,
+                                            maxIter);  //!< Row indices used.
+  DeviceIntVector workingNodeIteration(
+      "workingNodeIteration",
+      maxWorkNodeSize);  //!< Iteration counters for nodes.
 
-  DeviceIntVector workingNodeCopy("workingNodeCopy", maxWorkNodeSize * maxIter);
-  DeviceIntVector workingNodeCopyOffset("workingNodeCopyOffset",
-                                        maxWorkNodeSize);
+  DeviceIntVector workingNodeCopy(
+      "workingNodeCopy",
+      maxWorkNodeSize * maxIter);  //!< Used for copying node arrays.
+  DeviceIntVector workingNodeCopyOffset(
+      "workingNodeCopyOffset",
+      maxWorkNodeSize);  //!< Copy offsets for node arrays.
 
-  DeviceDoubleVector nu2("nu2", maxWorkNodeSize);
-  DeviceDoubleVector mu2("mu", maxWorkNodeSize);
+  DeviceDoubleVector nu2(
+      "nu2", maxWorkNodeSize);  //!< Stores power-iteration numerators for
+                                //!< stopping criterion.
+  DeviceDoubleVector mu2(
+      "mu", maxWorkNodeSize);  //!< Stores power-iteration denominators for
+                               //!< stopping criterion.
 
-  DeviceDoubleVector workingNodeDoubleCopy("workingNodeDoubleCopy",
-                                           maxWorkNodeSize);
+  DeviceDoubleVector workingNodeDoubleCopy(
+      "workingNodeDoubleCopy",
+      maxWorkNodeSize);  //!< Used for copying mu2.
 
-  DeviceIntVector uDotCheck("uDotCheck", maxWorkNodeSize);
+  DeviceIntVector uDotCheck(
+      "uDotCheck", maxWorkNodeSize);  //!< Used for velocity post-checking.
 
   const double epsilon = mEpsilon;
   const double epsilon2 = epsilon * epsilon;
 
-  DeviceIntVector relativeCoordOffset("relativeCoordOffset", maxWorkNodeSize);
+  DeviceIntVector relativeCoordOffset(
+      "relativeCoordOffset",
+      maxWorkNodeSize);  //!< Offsets for relative coordinates.
 
+  // Short references for large data structures
   auto &mFarMatI = *mFarMatIPtr;
   auto &mFarMatJ = *mFarMatJPtr;
   auto &mCoord = *mCoordPtr;
   auto &mClusterTree = *mClusterTreePtr;
 
-  const int farNodeSize = mFarMatI.extent(0);
-  int finishedNodeSize = 0;
-  int installedNode = 0;
-  int totalCoord = 0;
+  const int farNodeSize = mFarMatI.extent(0);  //!< Number of far node pairs
+  int finishedNodeSize = 0;  //!< Number of node pairs processed so far.
+  int installedNode = 0;     //!< Next node index to be installed for batch.
+  int totalCoord = 0;        //!< Tracks total coordinates processed in a batch.
 
   bool farDotFinished = false;
+
+  /** Begin processing node pairs in adaptive batches */
   while (!farDotFinished) {
     totalNumIter++;
     innerNumIter++;
@@ -126,7 +191,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
     if (workNodeSize == 0) {
       allowedWorkload = maxRelativeCoord;
 
-      // estimate the workload
+      // estimate the workload and determine optimal batch size
       int estimatedWorkload;
       int leftNode = std::min(farNodeSize - finishedNodeSize, maxWorkNodeSize);
       workNodeSize = leftNode;
@@ -136,10 +201,13 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
       Kokkos::parallel_for(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workNodeSize),
           KOKKOS_LAMBDA(const int i) { workingNode(i) = installedNode + i; });
+
+      // Dynamically adjust batch size to avoid exceeding allowedWorkload
       while (true) {
         int estimatedQMatWorkload = 0;
         int estimatedCMatWorkload = 0;
 
+        // Estimate total row workload for C matrices in the batch
         Kokkos::parallel_reduce(
             Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workNodeSize),
             KOKKOS_LAMBDA(const std::size_t i, int &tSum) {
@@ -149,6 +217,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             },
             Kokkos::Sum<int>(estimatedCMatWorkload));
 
+        // Estimate total column workload for Q matrices in the batch
         Kokkos::parallel_reduce(
             Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workNodeSize),
             KOKKOS_LAMBDA(const std::size_t i, int &tSum) {
@@ -158,6 +227,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             },
             Kokkos::Sum<int>(estimatedQMatWorkload));
 
+        // Use the larger workload size to check if the batch needs to be
+        // split
         estimatedWorkload =
             std::max(estimatedCMatWorkload, estimatedQMatWorkload);
 
@@ -208,6 +279,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           totalCoord);
       Kokkos::fence();
 
+      // Fill workingNodeCMatOffset for C matrix placement
       Kokkos::parallel_for(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
               0, workNodeSize * maxIter),
@@ -246,6 +318,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           totalCoord);
       Kokkos::fence();
 
+      // Fill workingNodeCMatOffset for C matrix placement
       Kokkos::parallel_for(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
               0, workNodeSize * maxIter),
@@ -343,6 +416,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
       // copy result to CMat
       auto dataPtr = resultTensor.data_ptr<float>();
 
+      // Fill cMatPool with model outputs, enforcing symmetry on non-diagonal
+      // elements.
       Kokkos::parallel_for(
           Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(workNodeSize,
                                                             Kokkos::AUTO()),
@@ -360,6 +435,9 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             const int ckOffset =
                 workingNodeCMatOffset(rank, workingNodeIteration(rank));
 
+            // Loop over each row in the current batch to copy the predicted C
+            // matrices to cMatPool. Enforce symmetry by averaging each
+            // off-diagonal element with its transpose.
             Kokkos::parallel_for(Kokkos::TeamVectorRange(teamMember, workSizeI),
                                  [&](const int j) {
                                    const int index = relativeOffset + j;
@@ -390,6 +468,9 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
     // find index for QMat
     {
       auto begin = std::chrono::steady_clock::now();
+
+      // Step 1: Orthogonalize the current C matrix (remove projections on
+      // previous bases)
       Kokkos::parallel_for(
           Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(workNodeSize,
                                                             Kokkos::AUTO()),
@@ -403,11 +484,13 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
 
             const int rowSize = indexIEnd - indexIStart;
 
+            // Offset for current C matrix and selected column index for Q
             const int ckOffset =
                 workingNodeCMatOffset(rank, workingNodeIteration(rank));
             const int jk =
                 workingNodeSelectedColIdx(rank, workingNodeIteration(rank));
 
+            // Loop over all entries of the C matrix for the current node
             Kokkos::parallel_for(
                 Kokkos::TeamVectorRange(teamMember, rowSize * 9),
                 [&](const int j) {
@@ -430,6 +513,10 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           });
       Kokkos::fence();
 
+      // Step 2: Find the row of the current C matrix block with the largest
+      // determinant (determinant is better than norm according to the in-house
+      // test), and store the corresponding index. Also compute and store the
+      // inverse.
       Kokkos::parallel_for(
           Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(workNodeSize,
                                                             Kokkos::AUTO()),
@@ -445,6 +532,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             const int ckOffset =
                 workingNodeCMatOffset(rank, workingNodeIteration(rank));
 
+            // Result will hold the max determinant value and its corresponding
+            // index
             Kokkos::MaxLoc<double, int>::value_type result;
             Kokkos::parallel_reduce(
                 Kokkos::TeamThreadRange(teamMember, rowSize),
@@ -454,6 +543,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                   const int index = ckOffset + j;
                   const int ckIndex = relativeCoordOffset(rank) + j;
 
+                  // Compute determinant for current 3x3 matrix block
                   const double a = cMatPool(index, 0);
                   const double b = cMatPool(index, 1);
                   const double c = cMatPool(index, 2);
@@ -467,6 +557,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                   curNorm = a * (e * i - f * h) - b * (d * i - f * g) +
                             c * (d * h - e * g);
 
+                  // Store a copy of the current C matrix block for later use
                   for (int k = 0; k < 9; k++)
                     ckMatPool(ckIndex, k) = cMatPool(index, k);
 
@@ -475,6 +566,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                     if (workingNodeSelectedRowIdx(rank, l) == j)
                       exist = true;
 
+                  // Update result if current determinant is larger and row is
+                  // unused
                   if (curNorm > update.val && exist == false) {
                     update.val = curNorm;
                     update.loc = j;
@@ -483,11 +576,14 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                 Kokkos::MaxLoc<double, int>(result));
             teamMember.team_barrier();
 
+            // Store the index of the row with the largest determinant for this
+            // node/iteration
             workingNodeSelectedRowIdx(rank, workingNodeIteration(rank)) =
                 result.loc;
 
             const int ik = result.loc;
 
+            // Compute and store the inverse of the selected C matrix block
             Kokkos::single(Kokkos::PerTeam(teamMember), [&]() {
               const double a = cMatPool(ckOffset + ik, 0);
               const double b = cMatPool(ckOffset + ik, 1);
@@ -523,6 +619,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                   Kokkos::DefaultExecutionSpace>::member_type &teamMember) {
             const int rank = teamMember.league_rank();
 
+            // Get the I node indices and work size for this batch
             const int nodeI = mFarMatI(workingNode(rank));
             const int indexIStart = mClusterTree(nodeI, 2);
             const int indexIEnd = mClusterTree(nodeI, 3);
@@ -532,16 +629,21 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             const int ckOffset =
                 workingNodeCMatOffset(rank, workingNodeIteration(rank));
 
-            // multiply ckInv to cMat
+            // For each row in the current C matrix block, update with the
+            // product of the previously selected C (ckMatPool) and its inverse
+            // (ckInvMatPool)
             Kokkos::parallel_for(
                 Kokkos::TeamThreadRange(teamMember, rowSize), [&](const int j) {
                   const int index = ckOffset + j;
                   const int ckIndex = relativeCoordOffset(rank) + j;
 
+                  // Initialize the 3x3 block to zero before accumulating the
+                  // sum
                   for (int k = 0; k < 9; k++)
                     cMatPool(index, k) = 0.0;
 
                   double sum;
+                  // Loop to perform matrix multiplication: cMat = ckMat * ckInv
                   for (int row = 0; row < 3; row++)
                     for (int col = 0; col < 3; col++) {
                       sum = 0.0;
@@ -554,17 +656,18 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           });
       Kokkos::fence();
 
+      // Record the duration for C matrix normalization
       auto end = std::chrono::steady_clock::now();
       ckNormalizationDuration +=
           std::chrono::duration_cast<std::chrono::microseconds>(end - begin)
               .count();
     }
 
+    // Compute relative coordinates for Q matrix (QMat) inference
     {
       std::chrono::steady_clock::time_point begin =
           std::chrono::steady_clock::now();
 
-      // calculate relative coord for Q
       totalCoord = 0;
       Kokkos::parallel_scan(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workNodeSize),
@@ -598,6 +701,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             const int indexJEnd = mClusterTree(nodeJ, 3);
             const int workSizeJ = indexJEnd - indexJStart;
 
+            // Get the I node for this batch and the selected row
             const int nodeI = mFarMatI(workingNode(rank));
             const int indexI =
                 mClusterTree(nodeI, 2) +
@@ -637,6 +741,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
       // copy result to QMat
       auto dataPtr = resultTensor.data_ptr<float>();
 
+      // Copy Q matrix predictions into qMatPool, enforcing symmetry for
+      // off-diagonal elements by averaging with their transpose.
       Kokkos::parallel_for(
           Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(workNodeSize,
                                                             Kokkos::AUTO()),
@@ -654,6 +760,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             const int qkOffset =
                 workingNodeQMatOffset(rank, workingNodeIteration(rank));
 
+            // For each row (target) in this batch, fill qMatPool
             Kokkos::parallel_for(Kokkos::TeamVectorRange(teamMember, workSizeJ),
                                  [&](const int j) {
                                    const int index = relativeOffset + j;
@@ -674,6 +781,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           });
       Kokkos::fence();
 
+      // Record query duration for QMat inference
       std::chrono::steady_clock::time_point end =
           std::chrono::steady_clock::now();
       queryDuration +=
@@ -684,6 +792,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
     // find index for CMat
     {
       auto begin = std::chrono::steady_clock::now();
+
+      // Orthogonalize Q matrices against previous basis and remove projections
       Kokkos::parallel_for(
           Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(workNodeSize,
                                                             Kokkos::AUTO()),
@@ -691,6 +801,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
               const Kokkos::TeamPolicy<
                   Kokkos::DefaultExecutionSpace>::member_type &teamMember) {
             const int rank = teamMember.league_rank();
+
+            // Get J node indices and column size
             const int nodeJ = mFarMatJ(workingNode(rank));
             const int indexJStart = mClusterTree(nodeJ, 2);
             const int indexJEnd = mClusterTree(nodeJ, 3);
@@ -702,6 +814,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             const int ik =
                 workingNodeSelectedRowIdx(rank, workingNodeIteration(rank));
 
+            // For each entry in the Q matrix block (flattened), subtract
+            // projections
             Kokkos::parallel_for(
                 Kokkos::TeamThreadRange(teamMember, colSize * 9),
                 [&](const int j) {
@@ -711,6 +825,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                   const int col = k % 3;
 
                   double sum = 0.0;
+
+                  // Loop over all previous iterations to project out old basis
                   for (int l = 0; l < innerNumIter - 1; l++) {
                     const int indexL = workingNodeQMatOffset(rank, l) + j / 9;
                     const int cMatOffsetIk =
@@ -719,11 +835,14 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                       sum += cMatPool(cMatOffsetIk, 3 * row + m) *
                              qMatPool(indexL, 3 * m + col);
                   }
+                  // Remove projection from Q
                   qMatPool(index, k) -= sum;
                 });
           });
       Kokkos::fence();
 
+      // Select the column (basis vector) with largest determinant (norm) as the
+      // next basis for Q
       Kokkos::parallel_for(
           Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(workNodeSize,
                                                             Kokkos::AUTO()),
@@ -732,6 +851,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                   Kokkos::DefaultExecutionSpace>::member_type &teamMember) {
             const int rank = teamMember.league_rank();
 
+            // Get J node indices and column size
             const int nodeJ = mFarMatJ(workingNode(rank));
             const int indexJStart = mClusterTree(nodeJ, 2);
             const int indexJEnd = mClusterTree(nodeJ, 3);
@@ -740,6 +860,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             const int qkOffset =
                 workingNodeQMatOffset(rank, workingNodeIteration(rank));
 
+            // Find the row in Q with the largest determinant, and not yet used
             Kokkos::MaxLoc<double, int>::value_type result;
             Kokkos::parallel_reduce(
                 Kokkos::TeamVectorRange(teamMember, colSize),
@@ -748,6 +869,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                   double curNorm = 0.0;
                   const int index = qkOffset + j;
 
+                  // Compute determinant of the 3x3 Q block
                   const double a = qMatPool(index, 0);
                   const double b = qMatPool(index, 1);
                   const double c = qMatPool(index, 2);
@@ -761,11 +883,13 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                   curNorm = a * (e * i - f * h) - b * (d * i - f * g) +
                             c * (d * h - e * g);
 
+                  // Check if this row has been selected before
                   bool exist = false;
                   for (int l = 0; l <= workingNodeIteration(rank); l++)
                     if (workingNodeSelectedColIdx(rank, l) == j)
                       exist = true;
 
+                  // If not previously used and norm is greater, update
                   if (curNorm > update.val && exist == false) {
                     update.val = curNorm;
                     update.loc = j;
@@ -779,6 +903,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           });
       Kokkos::fence();
 
+      // Track Q matrix normalization duration
       auto end = std::chrono::steady_clock::now();
       qkNormalizationDuration +=
           std::chrono::duration_cast<std::chrono::microseconds>(end - begin)
@@ -789,6 +914,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
     {
       auto start = std::chrono::steady_clock::now();
 
+      // For each batch, evaluate norms and cross-terms to update nu2 and mu2,
+      // and check stopping condition
       Kokkos::parallel_for(
           Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(workNodeSize,
                                                             Kokkos::AUTO()),
@@ -797,11 +924,13 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                   Kokkos::DefaultExecutionSpace>::member_type &teamMember) {
             const int rank = teamMember.league_rank();
 
+            // Offsets for the current iteration's C and Q blocks
             const int ckOffset =
                 workingNodeCMatOffset(rank, workingNodeIteration(rank));
             const int qkOffset =
                 workingNodeQMatOffset(rank, workingNodeIteration(rank));
 
+            // Indices for I and J, and work sizes
             const int nodeI = mFarMatI(workingNode(rank));
             const int indexIStart = mClusterTree(nodeI, 2);
             const int indexIEnd = mClusterTree(nodeI, 3);
@@ -814,6 +943,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
 
             ArrReduce ckArrReduce, qkArrReduce;
 
+            // Accumulate squared norms and dot products for the current C
+            // matrix (row-wise)
             Kokkos::parallel_reduce(
                 Kokkos::TeamThreadRange(teamMember, rowSize * 6),
                 [&](const int j, ArrReduce &tSum) {
@@ -821,6 +952,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                   const int k = j % 6;
 
                   if (k < 3)
+                    // Sum of squared values for each column
                     tSum.values[k] += cMatPool(ckOffset + row, k) *
                                           cMatPool(ckOffset + row, k) +
                                       cMatPool(ckOffset + row, k + 3) *
@@ -828,6 +960,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                                       cMatPool(ckOffset + row, k + 6) *
                                           cMatPool(ckOffset + row, k + 6);
                   else
+                    // Off-diagonal dot products between columns
                     tSum.values[k] +=
                         cMatPool(ckOffset + row, k % 3) *
                             cMatPool(ckOffset + row, (k + 1) % 3) +
@@ -838,6 +971,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                 },
                 Kokkos::Sum<ArrReduce>(ckArrReduce));
 
+            // Accumulate squared norms and dot products for the current Q
+            // matrix (col-wise)
             Kokkos::parallel_reduce(
                 Kokkos::TeamThreadRange(teamMember, colSize),
                 [&](const int j, ArrReduce &tSum) {
@@ -875,6 +1010,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
 
             teamMember.team_barrier();
 
+            // Compute nu2 and mu2 for the current node/batch
             Kokkos::single(Kokkos::PerTeam(teamMember), [&]() {
               const double ckCol0SquaredNorm = ckArrReduce.values[0];
               const double ckCol1SquaredNorm = ckArrReduce.values[1];
@@ -909,6 +1045,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
               for (int d1 = 0; d1 < 3; d1++)
                 for (int d2 = 0; d2 < 3; d2++) {
                   double ckDot = 0.0, qkDot = 0.0;
+                  // Compute dot product for the C basis
                   Kokkos::parallel_reduce(
                       Kokkos::TeamThreadRange(teamMember, rowSize),
                       [&](const int j, double &tSum) {
@@ -921,6 +1058,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                       },
                       Kokkos::Sum<double>(ckDot));
 
+                  // Compute dot product for the Q basis
                   Kokkos::parallel_reduce(
                       Kokkos::TeamThreadRange(teamMember, colSize),
                       [&](const int j, double &tSum) {
@@ -944,17 +1082,23 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
       Kokkos::parallel_for(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workNodeSize),
           KOKKOS_LAMBDA(const int i) {
+            // Retrieve the I node and compute the row (work) size for this
+            // node.
             const int nodeI = mFarMatI(workingNode(i));
             const int indexIStart = mClusterTree(nodeI, 2);
             const int indexIEnd = mClusterTree(nodeI, 3);
             const int rowSize = indexIEnd - indexIStart;
 
+            // Retrieve the J node and compute the column size for this node.
             const int nodeJ = mFarMatJ(workingNode(i));
             const int indexJStart = mClusterTree(nodeJ, 2);
             const int indexJEnd = mClusterTree(nodeJ, 3);
             const int colSize = indexJEnd - indexJStart;
 
+            // Advance the iteration counter for this work node.
             workingNodeIteration(i)++;
+
+            // Check stopping criterion for this batch/node.
             if (nu2(i) < mu2(i) * epsilon2 ||
                 workingNodeIteration(i) >= maxIter ||
                 workingNodeIteration(i) >= min(rowSize, colSize)) {
@@ -967,6 +1111,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
 
       {
         int iterationCheckResult = 0;
+
+        // Check if any node exceeded the maximum allowed number of iterations.
         Kokkos::parallel_reduce(
             Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workNodeSize),
             KOKKOS_LAMBDA(const int i, int &tIterationCheckResult) {
@@ -977,6 +1123,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
         Kokkos::fence();
 
         if (iterationCheckResult > 0) {
+          // If any node has excessive iterations, print debug information.
           std::cout << "Number of iteration is large in rank: " << mMPIRank
                     << std::endl;
 
@@ -1006,6 +1153,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           Kokkos::deep_copy(nuHost, nu2);
           Kokkos::deep_copy(muHost, mu2);
 
+          // Print detailed iteration and node information for diagnosis.
           for (int i = 0; i < workNodeSize; i++) {
             if (workingNodeIterationHost(i) > maxIter) {
               std::cout << "farMatI: " << farMatIHost(workingNodeHost(i))
@@ -1031,6 +1179,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
               .count();
     }
 
+    // Print detailed iteration and node information for diagnosis.
     int newWorkNodeSize = 0;
     Kokkos::parallel_reduce(
         Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workNodeSize),
@@ -1045,7 +1194,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
     {
       auto start = std::chrono::steady_clock::now();
 
-      // stage 1
+      // Stage 1: Identify nodes that have converged (stopNode == -1) for dot
+      // product.
       const int dotSize = workNodeSize - newWorkNodeSize;
       Kokkos::parallel_for(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, dotSize),
@@ -1064,6 +1214,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           });
       Kokkos::fence();
 
+      // Initialize the middle matrix pool to zero for accumulation in the next
+      // step.
       Kokkos::parallel_for(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
               0, innerNumIter * dotSize * 3),
@@ -1116,11 +1268,14 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             const int rank = teamMember.league_rank();
             const int workingNodeRank = dotProductRank(rank);
 
+            // Get node I information (rows of solution u)
             const int nodeI = mFarMatI(dotProductNode(rank));
             const int indexIStart = mClusterTree(nodeI, 2);
             const int indexIEnd = mClusterTree(nodeI, 3);
             const int workSizeI = indexIEnd - indexIStart;
 
+            // For each row, for each component, and for each inner iteration,
+            // accumulate contributions to u
             Kokkos::parallel_for(
                 Kokkos::TeamThreadRange(teamMember,
                                         workSizeI * innerNumIter * 3),
@@ -1134,6 +1289,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                       workingNodeCMatOffset(workingNodeRank, iter);
                   const int middleMatOffset = 3 * innerNumIter * rank;
 
+                  // Matrix-vector multiply: sum C * middleMat over 'k'
                   for (int k = 0; k < 3; k++)
                     sum += cMatPool(cMatOffset + index, row * 3 + k) *
                            middleMatPool(middleMatOffset + 3 * iter + k);
@@ -1143,7 +1299,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           });
       Kokkos::fence();
 
-      // stage 2, consider the symmetry property
+      // Stage 2, consider the symmetry property
       if (mUseSymmetry) {
         Kokkos::parallel_for(
             Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
@@ -1151,6 +1307,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             KOKKOS_LAMBDA(const int i) { middleMatPool(i) = 0.0; });
         Kokkos::fence();
 
+        // Compute (C^T * f) for each row, exploiting symmetry
         Kokkos::parallel_for(
             Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(dotSize,
                                                               Kokkos::AUTO()),
@@ -1160,6 +1317,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
               const int rank = teamMember.league_rank();
               const int workingNodeRank = dotProductRank(rank);
 
+              // Get node I info (rows)
               const int nodeI = mFarMatI(workingNode(workingNodeRank));
               const int indexIStart = mClusterTree(nodeI, 2);
               const int indexIEnd = mClusterTree(nodeI, 3);
@@ -1188,6 +1346,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             });
         Kokkos::fence();
 
+        // Accumulate Q^T * (result of previous step) for J node columns
         Kokkos::parallel_for(
             Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(dotSize,
                                                               Kokkos::AUTO()),
@@ -1197,11 +1356,13 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
               const int rank = teamMember.league_rank();
               const int workingNodeRank = dotProductRank(rank);
 
+              // Get node J info (columns)
               const int nodeJ = mFarMatJ(dotProductNode(rank));
               const int indexJStart = mClusterTree(nodeJ, 2);
               const int indexJEnd = mClusterTree(nodeJ, 3);
               const int workSizeJ = indexJEnd - indexJStart;
 
+              // Flat iteration over (column, component, inner iteration)
               Kokkos::parallel_for(
                   Kokkos::TeamThreadRange(teamMember,
                                           workSizeJ * innerNumIter * 3),
@@ -1219,6 +1380,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                       sum += qMatPool(qMatOffset + index, k * 3 + row) *
                              middleMatPool(middleMatOffset + 3 * iter + k);
 
+                    // Atomic add to final solution vector
                     Kokkos::atomic_add(&u(indexJStart + index, row), sum);
                   });
             });
@@ -1227,11 +1389,14 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
 
       // post check
       if (postCheck) {
+        // Reset the uDotCheck flag for all working nodes
         Kokkos::parallel_for(
             Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, dotSize),
             KOKKOS_LAMBDA(const int rank) { uDotCheck(rank) = 0; });
         Kokkos::fence();
 
+        // For each working node, compute the Euclidean norm of the u solution
+        // vector for each row
         Kokkos::parallel_for(
             Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(dotSize,
                                                               Kokkos::AUTO()),
@@ -1240,11 +1405,13 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                     Kokkos::DefaultExecutionSpace>::member_type &teamMember) {
               const int rank = teamMember.league_rank();
 
+              // Get row range for this working node
               const int nodeI = mFarMatI(dotProductNode(rank));
               const int indexIStart = mClusterTree(nodeI, 2);
               const int indexIEnd = mClusterTree(nodeI, 3);
               const int workSizeI = indexIEnd - indexIStart;
 
+              // For each row, compute norm of 3-vector [u_x, u_y, u_z]
               Kokkos::parallel_for(
                   Kokkos::TeamThreadRange(teamMember, workSizeI),
                   [&](const int i) {
@@ -1258,6 +1425,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             });
         Kokkos::fence();
 
+        // Reduce uDotCheck array to count how many ranks failed the check
         int dotCheckSum = 0;
         Kokkos::parallel_reduce(
             Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, dotSize),
@@ -1271,6 +1439,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
         if (dotCheckSum > 0) {
           std::cout << "uNorm is too large in rank: " << mMPIRank << std::endl;
 
+          // Create host mirror views for device data (for debugging/inspection
+          // on the host)
           DeviceIndexVector::HostMirror farMatIHost =
               Kokkos::create_mirror_view(mFarMatI);
           DeviceIndexVector::HostMirror farMatJHost =
@@ -1290,6 +1460,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
               Kokkos::create_mirror_view(dotProductNode);
           Kokkos::deep_copy(dotProductNodeHost, dotProductNode);
 
+          // Loop through all dot-checked nodes and print details for those with
+          // too-large norms
           for (int i = 0; i < dotSize; i++) {
             if (dotCheckHost(i) == 1) {
               std::cout
@@ -1318,11 +1490,14 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
       finishedNodeSize += workNodeSize;
       workNodeSize = 0;
 
+      // Track the maximum number of inner iterations for reporting.
       if (maxInnerNumIter < innerNumIter) {
         maxInnerNumIter = innerNumIter;
       }
 
       innerNumIter = 0;
+      // If only some nodes remain for further iteration, compact the arrays
+      // and remap node indices.
     } else if (newWorkNodeSize < workNodeSize) {
       auto start = std::chrono::steady_clock::now();
 
@@ -1346,6 +1521,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           });
       Kokkos::fence();
 
+      // Overwrite the workingNode array with only the remaining (active)
+      // nodes.
       Kokkos::parallel_for(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0,
                                                              newWorkNodeSize),
@@ -1354,7 +1531,10 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           });
       Kokkos::fence();
 
-      // C offset
+      // For each of the following arrays, compact and reindex them in
+      // accordance with the new reduced set of nodes:
+
+      // Compact and remap C matrix offsets.
       Kokkos::parallel_for(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
               0, workNodeSize * maxIter),
@@ -1373,7 +1553,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           });
       Kokkos::fence();
 
-      // Q offset
+      // Compact and remap Q matrix offsets.
       Kokkos::parallel_for(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
               0, workNodeSize * maxIter),
@@ -1393,6 +1573,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
       Kokkos::fence();
 
       // selected col
+      // Compact and remap the selected column indices for each inner
+      // iteration.
       for (int i = 0; i <= innerNumIter; i++) {
         Kokkos::parallel_for(
             Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workNodeSize),
@@ -1412,6 +1594,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
       }
 
       // selected row
+      // Compact and remap the selected row indices for each inner iteration.
       for (int i = 0; i <= innerNumIter; i++) {
         Kokkos::parallel_for(
             Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workNodeSize),
@@ -1431,6 +1614,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
       }
 
       // num of iteration
+      // Compact and remap the number of iterations for each working node.
       Kokkos::parallel_for(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workNodeSize),
           KOKKOS_LAMBDA(const int rank) {
@@ -1448,6 +1632,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
       Kokkos::fence();
 
       // mu2
+      // Compact and remap the mu2 tracking array (typically related to
+      // error/norm criteria).
       Kokkos::parallel_for(
           Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workNodeSize),
           KOKKOS_LAMBDA(const int rank) {
@@ -1463,6 +1649,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
           });
       Kokkos::fence();
 
+      // Update the number of active work nodes.
       workNodeSize = newWorkNodeSize;
 
       auto end = std::chrono::steady_clock::now();
@@ -1479,6 +1666,8 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
   std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
 
   MPI_Barrier(MPI_COMM_WORLD);
+
+  // Perform reductions to aggregate statistics across all MPI ranks.
   MPI_Allreduce(MPI_IN_PLACE, &totalNumQuery, 1, MPI_UNSIGNED_LONG, MPI_SUM,
                 MPI_COMM_WORLD);
   MPI_Allreduce(MPI_IN_PLACE, &totalNumIter, 1, MPI_UNSIGNED_LONG, MPI_SUM,
@@ -1486,6 +1675,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
   MPI_Allreduce(MPI_IN_PLACE, &maxInnerNumIter, 1, MPI_INT, MPI_MAX,
                 MPI_COMM_WORLD);
 
+  // Print timing and summary statistics on rank 0 only
   if (mMPIRank == 0) {
     printf(
         "num query: %ld, num iteration: %ld, query duration: %.4fs, dot "

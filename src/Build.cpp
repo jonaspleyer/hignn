@@ -1,5 +1,19 @@
 #include "HignnModel.hpp"
 
+/**
+ * @brief Build the hierarchical clustering tree for the current particle
+ * coordinates.
+ *
+ * This function performs both a sequential (root rank) and parallel (all MPI
+ * ranks) construction of the cluster tree, partitions data according to MPI
+ * ranks, and initializes reordering structures.
+ *
+ * The resulting tree enables efficient identification of close and far particle
+ * pairs for hierarchical matrix approximation.
+ *
+ * All key structures (reordered map, cluster tree) are broadcast to all ranks
+ * and copied to the device for use in computation.
+ */
 void HignnModel::Build() {
   MPI_Barrier(MPI_COMM_WORLD);
   std::chrono::high_resolution_clock::time_point t1 =
@@ -8,22 +22,25 @@ void HignnModel::Build() {
   if (mMPIRank == 0)
     std::cout << "start of Build" << std::endl;
 
+  // Mirror device coordinates to host for cluster tree construction
   Kokkos::deep_copy(*mCoordMirrorPtr, *mCoordPtr);
 
   mReorderedMap.resize(GetCount());
 
+  // Determine size and structure of the initial clustering based on MPI size
   int initialLevel = floor(log(mMPISize) / log(2));
   int initialNodeSize = pow(2, initialLevel + 2) - 1;
   int maxWorkSize = pow(2, initialLevel);
 
   HostIndexMatrix initialClusterTree("initialClusterTree", initialNodeSize, 5);
 
-  // initial sequential stage
+  // initial sequential stage: root process builds the root-level tree
   if (mMPIRank == 0) {
     std::queue<std::size_t> nodeList;
 
     nodeList.emplace(0);
 
+    // Initialize all cluster tree entries
     for (int i = 0; i < initialNodeSize; i++)
       for (int j = 0; j < 5; j++)
         initialClusterTree(i, j) = 0;
@@ -38,6 +55,7 @@ void HignnModel::Build() {
 
     int newNodeNum = 1;
 
+    // Sequentially split nodes until leaf size reached
     while (nodeList.size() > 0) {
       int node = nodeList.front();
       nodeList.pop();
@@ -78,6 +96,7 @@ void HignnModel::Build() {
     }
   }
 
+  // Broadcast the root cluster structure and reordered indices to all ranks
   MPI_Bcast(initialClusterTree.data(), initialNodeSize * 5, MPI_UNSIGNED_LONG,
             0, MPI_COMM_WORLD);
   MPI_Bcast(mReorderedMap.data(), mReorderedMap.size(), MPI_UNSIGNED_LONG, 0,
@@ -88,7 +107,7 @@ void HignnModel::Build() {
 
   int newNodeNum = 1;
 
-  // parallel stage
+  // parallel stage: all ranks construct local subtrees in parallel
   if (mMPIRank < maxWorkSize) {
     int startNode = pow(2, initialLevel) - 1 + mMPIRank;
     for (int j = 0; j < 5; j++)
@@ -108,6 +127,7 @@ void HignnModel::Build() {
         nodeList.pop();
       }
 
+      // Optionally parallelize splitting for larger batches
       if (numSelectedNode <= 16)
         for (int i = 0; i < numSelectedNode; i++) {
           size_t node = selectedNode[i];
@@ -168,6 +188,7 @@ void HignnModel::Build() {
 
   mClusterTreeSize += initialNodeSize;
 
+  // Allocate device and host mirror storage for the cluster tree
   mClusterTreePtr = std::make_shared<DeviceIndexMatrix>(
       DeviceIndexMatrix("mClusterTreePtr", mClusterTreeSize, 5));
   mClusterTreeMirrorPtr = std::make_shared<DeviceIndexMatrix::HostMirror>();
@@ -175,6 +196,7 @@ void HignnModel::Build() {
 
   auto &hostClusterTree = *mClusterTreeMirrorPtr;
 
+  // Fill in initial root-level nodes
   for (int i = 0; i < initialNodeSize; i++)
     for (int j = 0; j < 5; j++)
       hostClusterTree(i, j) = initialClusterTree(i, j);
@@ -182,6 +204,7 @@ void HignnModel::Build() {
   size_t offset = initialNodeSize;
   size_t rankSize = 0;
 
+  // Merge per-rank subtrees into the global tree using MPI broadcasts
   for (int rank = 0; rank < maxWorkSize; rank++) {
     if (mMPIRank == rank) {
 #pragma omp parallel for schedule(auto)
@@ -225,6 +248,7 @@ void HignnModel::Build() {
 
   Kokkos::deep_copy(*mClusterTreePtr, hostClusterTree);
 
+  // Optionally reorder coordinates after building the tree
   Reorder(mReorderedMap);
 
   MPI_Barrier(MPI_COMM_WORLD);
