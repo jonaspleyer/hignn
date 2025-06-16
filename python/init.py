@@ -70,6 +70,7 @@ if __name__ == '__main__':
     os.system('make -j 16')
     
     os.system('cp *.so ../python/hignn.so')
+    os.system('cp *.so ../test/hignn.so')
     
     # init running environment
     os.chdir(source_path)

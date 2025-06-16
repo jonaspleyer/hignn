@@ -1,0 +1,30 @@
+{
+    "cloud": {
+        "type": "filament_cloud",
+        "filament": {
+            "n_filament": 1024,
+            "n_chain": 21,
+            "rest_length": 3,
+            "min_dist": 2.1,
+            "R1": 0.0,
+            "R2": 240.0,
+            "k_t": 20,
+            "k_b": 50
+        },
+        "seed": 0
+    },
+    "simulation": {
+        "time_integrator": "Explicit Euler",
+        "body_force": [
+            0.0,
+            0.0,
+            -1.0
+        ],
+        "dt": 0.005,
+        "t_max": 10,
+        "t_meas": 100
+    },
+    "model": {
+        "two_body_model": "nn/two_body_unbounded"
+    }
+}

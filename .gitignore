@@ -50,5 +50,8 @@ build/
 *.vtp
 *.h5
 
+*.pos
+
 Result/
-__pycache__/
+
+__pycache__

@@ -1,0 +1,77 @@
+{
+    "cloud": {
+        "type": "filament_particle_cloud",
+        "_type": "Type of cloud (options: 'filament_cloud', 'particle_cloud', 'filament_particle_cloud')",
+
+        "particle": {
+            "n_particle": 11,
+            "_n_particle": "Number of particles",
+
+            "min_dist": 2.1,
+            "_min_dist": "Minimum distance allowed between particles to avoid overlap",
+
+            "R1": 240.0,
+            "_R1": "Inner radius for spherical shell distribution",
+
+            "R2": 300.0,
+            "_R2": "Outer radius for spherical shell distribution",
+
+            "_description": "Parameters related to the particle cloud (can be ignored if there are no particles in the simulation)"
+        },
+
+        "filament": {
+            "n_filament": 1,
+            "_n_filament": "Number of filaments",
+
+            "n_chain": 11,
+            "_n_chain": "Number of particles per filament chain",
+
+            "rest_length": 3,
+            "_rest_length": "Rest length between adjacent particles in a filament",
+
+            "min_dist": 2.1,
+            "_min_dist": "Minimum distance between filament particles to prevent overlaps",
+
+            "R1": 0.0,
+            "_R1": "Inner radius for spherical shell distribution",
+
+            "R2": 240.0,
+            "_R2": "Outer radius for spherical shell distribution",
+
+            "k_t": 20,
+            "_k_t": "Tension stiffness parameter for filaments",
+
+            "k_b": 50,
+            "_k_b": "Bending stiffness parameter for filaments",
+
+            "_description": "Parameters related to the filament cloud (can be ignored if there are no filaments in the simulation)"
+        },
+
+        "seed": 0,
+        "_seed": "Random seed for reproducibility of cloud generation"
+    },
+
+    "simulation": {
+        "time_integrator": "Explicit Euler",
+        "_time_integrator": "Time integration method for simulation (Options: 'Explicit Euler', 'Explicit RK4')",
+
+        "body_force": [0.0, 0.0, -1.0],
+        "_body_force": "External body force vector applied to all particles (e.g., gravity)",
+
+        "dt": 0.005,
+        "_dt": "Time step size for the simulation",
+
+        "t_max": 0.1,
+        "_t_max": "Final time for the simulation",
+
+        "t_meas": 2,
+        "_t_meas": "Measurement interval: how often (in time steps) to record output data",
+
+        "_description": "Simulation configuration parameters"
+    },
+
+    "model": {
+        "two_body_model": "nn/two_body_unbounded",
+        "_two_body_model": "Path to the neural network model"
+    }
+}

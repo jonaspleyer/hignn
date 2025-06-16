@@ -32,24 +32,34 @@ ENV OMPI_CXX=/opt/kokkos/bin/nvcc_wrapper
 RUN cd /opt/ && \
     git clone https://github.com/kokkos/kokkos.git kokkos-source && \
     cd kokkos-source && \
-    git checkout release-candidate-4.2.01 && \
+    git checkout 4.5.00 && \
     mkdir build && \
     cd build && \
-    cmake -D CMAKE_INSTALL_PREFIX=/opt/kokkos -D Kokkos_ENABLE_CUDA=On -D Kokkos_CUDA_DIR=/usr/local/cuda -D Kokkos_ARCH_ADA89=On -D Kokkos_ENABLE_OPENMP=On -D CMAKE_CXX_STANDARD=17 -D BUILD_SHARED_LIBS=On .. && \
+    cmake -D CMAKE_INSTALL_PREFIX=/opt/kokkos -D Kokkos_ENABLE_CUDA=On -D Kokkos_CUDA_DIR=/usr/local/cuda -D Kokkos_ARCH_ADA89=On -D Kokkos_ENABLE_OPENMP=On -D CMAKE_CXX_STANDARD=17 -D BUILD_SHARED_LIBS=On -D CMAKE_POSITION_INDEPENDENT_CODE=On -D_GLIBCXX_USE_CXX11_ABI=1 .. && \
     make -j$(nproc) && \
     make install && \
     cd /opt/ && \
     rm -rf kokkos-source
 
-# PyTorch and LibTorch with CUDA 11.8 as PyTorch Geometric requires CUDA 11.8
-RUN pip3 install --no-cache-dir torch==2.2.1 torchvision==0.17.0 torchaudio==2.2.1 --index-url https://download.pytorch.org/whl/cu118
-RUN wget https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.2.1%2Bcu118.zip && \
-    unzip libtorch-cxx11-abi-shared-with-deps-2.2.1+cu118.zip && \
-    mv libtorch /opt/libtorch && \
-    rm -rf libtorch-cxx11-abi-shared-with-deps-2.2.1+cu118.zip libtorch
+# # PyTorch and LibTorch with CUDA 11.8 as PyTorch Geometric requires CUDA 11.8
+ENV _GLIBCXX_USE_CXX11_ABI=1
+RUN cd /opt/ && \
+    git clone --recursive https://github.com/pytorch/pytorch && \
+    cd pytorch && \
+    git checkout v2.5.0
+RUN cd /opt/pytorch && \
+    pip3 install --upgrade --upgrade-strategy eager -r requirements.txt && \
+    pip3 install --upgrade cmake && \
+    git submodule sync && \
+    git submodule update --init --recursive && \
+    CMAKE_PREFIX_PATH="$(python3 -c "import site; print(site.getsitepackages()[0])")/" MAX_JOB=$(nproc) TORCH_CUDA_ARCH_LIST="8.9" BUILD_CAFFE2=OFF BUILD_LITE_INTERPRETER=OFF CMAKE_POLICY_VERSION_MINIMUM=3.5 python3 setup.py develop
+
+ENV PYTHONPATH=/opt/pytorch:$PYTHONPATH
+ENV LibTorch_PATH=/opt/libtorch
 
 # PyTorch Geometric
-RUN pip3 install --no-cache-dir torch_geometric pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.2.1+cu118.html
+RUN FORCE_CUDA=1 MAX_JOB=$(nproc) TORCH_CUDA_ARCH_LIST="8.9" pip3 install --no-cache-dir --no-build-isolation git+https://github.com/pyg-team/pyg-lib.git && \
+    FORCE_CUDA=1 MAX_JOB=$(nproc) TORCH_CUDA_ARCH_LIST="8.9" pip3 install --no-cache-dir torch_geometric torch_scatter torch_sparse torch_cluster torch_spline_conv
 
 # environment variables
 ENV PATH="${PATH}:/opt/openmpi/bin"
@@ -134,6 +144,8 @@ RUN cd /opt/ && \
     rm -rf /opt/vtk
 
 ENV VTK_DIR=/opt/vtk-build/lib/cmake/vtk-9.1
+
+RUN pip3 install vtk
 
 # clean up
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

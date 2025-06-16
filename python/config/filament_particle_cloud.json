@@ -1,0 +1,37 @@
+{
+    "cloud": {
+        "type": "filament_particle_cloud",
+        "particle": {
+            "n_particle": 11,
+            "min_dist": 2.1,
+            "R1": 240.0,
+            "R2": 300.0
+        },
+        "filament": {
+            "n_filament": 1,
+            "n_chain": 21,
+            "rest_length": 3,
+            "min_dist": 2.1,
+            "R1": 0.0,
+            "R2": 240.0,
+            "k_t": 20,
+            "k_b": 50
+        },
+        "seed": 0
+    },
+    "simulation": {
+        "time_integrator": "Explicit Euler",
+        "body_force": [
+            0.0,
+            0.0,
+            -1.0
+        ],
+        "dt": 0.005,
+        "t_max": 10.0,
+        "t_meas": 100,
+        "time integrator": "Explicit Euler"
+    },
+    "model": {
+        "two_body_model": "nn/two_body_unbounded"
+    }
+}

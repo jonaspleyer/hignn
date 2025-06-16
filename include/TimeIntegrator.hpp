@@ -74,6 +74,9 @@ protected:
    */
   std::function<pybind11::array_t<float>(float, pybind11::array_t<float>)>
       mVelocityUpdateFunc;
+  std::function<void(pybind11::array_t<float>, pybind11::array_t<float>)>
+      mOutputFunc;
+  bool mCustomOutputFlag;
 
   /**
    * @brief Convert C++ particle positions and orientations into a Python array,
@@ -135,6 +138,28 @@ protected:
         // angularVelocity[num][j] = result_data(num, j + 3);
       }
     }
+  }
+
+  /**
+   * @brief Copy positions and velocities to Python output func
+   */
+  void Output() {
+    pybind11::array_t<float> position, velocity;
+    position.resize({(int)mNumRigidBody, 3});
+    velocity.resize({(int)mNumRigidBody, 3});
+
+    auto positionData = position.mutable_unchecked<2>();
+    auto velocityData = velocity.mutable_unchecked<2>();
+
+#pragma omp parallel for schedule(static)
+    for (std::size_t num = 0; num < mNumRigidBody; num++) {
+      for (int j = 0; j < 3; j++) {
+        positionData(num, j) = mPosition[num][j];
+        velocityData(num, j) = mVelocity[num][j];
+      }
+    }
+
+    mOutputFunc(position, velocity);
   }
 
   /**
@@ -225,7 +250,8 @@ public:
         mTimeStep(1.0),
         mFinalTime(10.0),
         mIsPeriodicBoundary(false),
-        mOutputFilePrefix("Result/") {
+        mOutputFilePrefix("Result/"),
+        mCustomOutputFlag(false) {
     MPI_Comm_rank(MPI_COMM_WORLD, &mMpiRank);
     MPI_Comm_size(MPI_COMM_WORLD, &mMpiSize);
 
@@ -284,6 +310,17 @@ public:
       const std::function<
           pybind11::array_t<float>(float, pybind11::array_t<float>)> &func) {
     mVelocityUpdateFunc = func;
+  }
+
+  /**
+   * @brief Set Python output func
+   */
+
+  void SetOutputFunc(
+      const std::function<void(pybind11::array_t<float>,
+                               pybind11::array_t<float>)> &func) {
+    mOutputFunc = func;
+    mCustomOutputFlag = true;
   }
 
   /**
@@ -435,7 +472,10 @@ public:
 
       // Write output if it's the right step
       if (mFuncCount % mOutputStep == 0) {
-        Output("output" + std::to_string(mFuncCount));
+        if (mCustomOutputFlag)
+          Output();
+        else
+          Output("output" + std::to_string(mFuncCount));
       }
 
       if (mIsPeriodicBoundary)
@@ -581,6 +621,8 @@ public:
       for (std::size_t num = 0; num < mNumRigidBody; num++) {
         if (mIsPeriodicBoundary)
           mPosition0[num] = mPosition[num] + mPositionOffset[num];
+        else
+          mPosition0[num] = mPosition[num];
         mOrientation0[num] = mOrientation[num];
       }
 
@@ -800,7 +842,10 @@ public:
       dt = std::min(dt, h0);
 
       if (mFuncCount % mOutputStep == 0) {
-        Output("output" + std::to_string(mFuncCount));
+        if (mCustomOutputFlag)
+          Output();
+        else
+          Output("output" + std::to_string(mFuncCount));
       }
 
       // reset k1 for next step
