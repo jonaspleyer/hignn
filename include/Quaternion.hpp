@@ -9,12 +9,21 @@
 #define M_PI 3.14159265359
 #endif
 
+/**
+ * @brief Class representing a quaternion for 3D rotation and manipulation.
+ *
+ * This class implements a quaternion, a mathematical object used to represent
+ * rotations in three-dimensional space. It provides various methods to
+ * manipulate and compute with quaternions, including multiplication,
+ * conjugation, conversion to Euler angles, and vector rotation.
+ */
 class Quaternion {
 private:
-  float mData[4];
+  float mData[4];  //!< Array storing the quaternion components: w (scalar), x,
+                   //!< y, z (vector).
 
 public:
-  // default constructor
+  /** Default constructor initializing quaternion to (0, 0, 0, 0). */
   Quaternion() {
     mData[0] = 0.0;
     mData[1] = 0.0;
@@ -29,7 +38,10 @@ public:
     mData[3] = q.mData[3];
   }
 
-  // constructor from a vector, means the scalar part would be zero
+  /**
+   * @brief Construct a quaternion from a 3D vector (scalar part is zero).
+   * @param vec [in] The vector to use for the quaternion’s vector part.
+   */
   Quaternion(Vec3 vec) {
     mData[0] = 0.0;
     mData[1] = vec[0];
@@ -37,7 +49,16 @@ public:
     mData[3] = vec[2];
   }
 
-  // constructor from a rotation axis and rotation angle theta
+  /**
+   * @brief Constructor from rotation axis and angle (axis-angle
+   * representation).
+   * @param omega [in] The unit vector representing the rotation axis.
+   * @param theta [in] The rotation angle in radians.
+   *
+   * This constructor converts an axis-angle representation into a quaternion.
+   * The axis is normalized, and the quaternion represents a rotation by the
+   * angle around the axis.
+   */
   Quaternion(Vec3 omega, const float theta) {
     float norm = omega.Mag();
     omega = omega * (1.0 / norm);
@@ -48,7 +69,12 @@ public:
     mData[3] = sin(h / 2.0) * omega[2];
   }
 
-  // constructor from euler angle, theta1, 2, 3, sequence - x, y, z
+  /**
+   * @brief Construct quaternion from Euler angles (roll, pitch, yaw).
+   * @param roll [in] Rotation around x-axis.
+   * @param pitch [in] Rotation around y-axis.
+   * @param yaw [in] Rotation around z-axis.
+   */
   Quaternion(float roll, float pitch, float yaw) {
     float cy = cos(yaw * 0.5);
     float sy = sin(yaw * 0.5);
@@ -63,6 +89,11 @@ public:
     mData[3] = cr * cp * sy - sr * sp * cy;
   }
 
+  /**
+   * @brief Multiply this quaternion by another (combine rotations).
+   * @param q [in] Quaternion to multiply by.
+   * @return Resulting quaternion.
+   */
   Quaternion product(Quaternion &q) {
     Quaternion res;
 
@@ -104,6 +135,11 @@ public:
     mData[3] = q3;
   }
 
+  /**
+   * @brief Computes the cross product of two quaternions.
+   * @param qa [in] First quaternion.
+   * @param qb [in] Second quaternion.
+   */
   void Cross(const Quaternion &qa, const Quaternion &qb) {
     float w = qa.mData[0] * qb.mData[0] - qa.mData[1] * qb.mData[1] -
               qa.mData[2] * qb.mData[2] - qa.mData[3] * qb.mData[3];
@@ -119,6 +155,12 @@ public:
     mData[3] = z;
   }
 
+  /**
+   * @brief Converts the quaternion to Euler angles.
+   * @param Roll [out] rotation around the x-axis.
+   * @param Pitch [out] rotation around the y-axis.
+   * @param Yaw [out] rotation around the z-axis.
+   */
   void to_euler_angles(float &roll, float &pitch, float &yaw) const {
     float sinr_cosp = 2.0 * (mData[0] * mData[1] + mData[2] * mData[3]);
     float cosr_cosp = 1.0 - 2.0 * (mData[1] * mData[1] + mData[2] * mData[2]);
@@ -147,6 +189,7 @@ public:
     return *this;
   }
 
+  /** Compute the quaternion conjugate (negate x,y,z). */
   void conjugate() {
     Quaternion q = *this;
     for (int i = 1; i < 4; i++) {
@@ -154,6 +197,11 @@ public:
     }
   }
 
+  /**
+   * @brief Rotates a vector using the quaternion.
+   * @param vec [in] The vector to rotate.
+   * @return The rotated vector.
+   */
   Vec3 rotate(const Vec3 &vec) {
     float e0e0 = mData[0] * mData[0];
     float e1e1 = mData[1] * mData[1];
@@ -174,6 +222,11 @@ public:
             ((e0e0 + e3e3) * 2.0 - 1.0) * vec[2]);
   }
 
+  /**
+   * @brief Apply the inverse rotation of the quaternion to a vector.
+   * @param vec [in] The vector to be inverse-rotated.
+   * @return The vector after inverse rotation.
+   */
   Vec3 rotate_back(const Vec3 &vec) {
     float e0e0 = +mData[0] * mData[0];
     float e1e1 = +mData[1] * mData[1];
@@ -194,6 +247,11 @@ public:
             ((e0e0 + e3e3) * 2.0 - 1.0) * vec[2]);
   }
 
+  /**
+   * @brief Apply an angular velocity increment to the quaternion.
+   * @param omega [in] The angular velocity vector (magnitude and direction).
+   * @param q [in, out] The quaternion to be rotated.
+   */
   void rotate_by_Wabs(Vec3 &omega, Quaternion &q) {
     float theta = omega.Mag();
     Quaternion q_delta(omega * (1.0 / theta), theta);
@@ -201,10 +259,17 @@ public:
   }
 };
 
+/** Compute the scaled cross product (Lie bracket) of two vectors. */
 Vec3 Bracket(const Vec3 &v1, const Vec3 &v2) {
   return Cross(v1, v2) * 2.0;
 }
 
+/**
+ * @brief Correct a small rotation increment k at base rotation u.
+ * @param u [in] Base rotation vector (axis–angle form).
+ * @param k [in] Initial small rotation increment.
+ * @return Adjusted rotation increment using a truncated cross-product series.
+ */
 Vec3 dexpinv(const Vec3 &u, const Vec3 &k) {
   Vec3 res;
   Vec3 bracket_res = Bracket(u, k);
