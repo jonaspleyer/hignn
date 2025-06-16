@@ -1,5 +1,24 @@
 #include "HignnModel.hpp"
 
+/**
+ * @brief Computes the updated velocities using the original two-body
+ * hydrodynamic mobility tensor.
+ *
+ * This function applies the two-body interaction model to all particle
+ * pairs, evaluating the hydrodynamic velocities resulting from the provided
+ * acting forces. The workload is divided among MPI ranks and further
+ * parallelized using Kokkos. All pairwise interactions are processed, without
+ * distinguishing between 'close' or 'far' nodes, resulting in dense evaluation
+ * of the mobility tensor. The function dynamically adapts the work size and
+ * batches to control memory usage, and leverages the TorchScript model for
+ * inference on each pair’s relative coordinates.
+ *
+ * @param u [in, out] A matrix of size (num_particles, 3) representing the
+ * velocities of the particles. The velocities are calculated from all pairwise
+ * hydrodynamic interactions with respect to the acting forces.
+ * @param f [in] A matrix of size (num_particles, 3) representing the forces
+ * applied to the particles.
+ */
 void HignnModel::DenseDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
   if (mMPIRank == 0)
     std::cout << "start of DenseDot" << std::endl;
@@ -7,8 +26,10 @@ void HignnModel::DenseDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
   double queryDuration = 0;
   double dotDuration = 0;
 
+  // Total number of leaf nodes for this run
   const std::size_t totalLeafNodeSize = mLeafNodeList.size();
 
+  // Partition leaf nodes among MPI ranks
   std::size_t leafNodeStart = 0, leafNodeEnd;
   for (unsigned int i = 0; i < (unsigned int)mMPIRank; i++) {
     std::size_t rankLeafNodeSize =
@@ -22,6 +43,7 @@ void HignnModel::DenseDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
 
   const std::size_t leafNodeSize = leafNodeEnd - leafNodeStart;
 
+  // Determine maximum work size for the local rank
   const std::size_t maxWorkSize = std::min<std::size_t>(
       leafNodeSize, mMaxRelativeCoord / (mBlockSize * mBlockSize));
   int workSize = maxWorkSize;
@@ -29,6 +51,7 @@ void HignnModel::DenseDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
   std::size_t totalNumQuery = 0;
   std::size_t totalNumIter = 0;
 
+  // Vectors for storing relative coordinates and node work assignments.
   DeviceFloatVector relativeCoordPool(
       "relativeCoordPool", maxWorkSize * mBlockSize * mBlockSize * 3);
   DeviceFloatMatrix queryResultPool("queryResultPool",
@@ -50,6 +73,7 @@ void HignnModel::DenseDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
 
   DeviceIntVector mLeafNode("mLeafNode", totalLeafNodeSize);
 
+  // Mirror host-side leaf node indices to device
   DeviceIntVector::HostMirror hostLeafNode =
       Kokkos::create_mirror_view(mLeafNode);
 
@@ -58,6 +82,7 @@ void HignnModel::DenseDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
   }
   Kokkos::deep_copy(mLeafNode, hostLeafNode);
 
+  // Initialize per-leaf node offsets and flags
   Kokkos::parallel_for(
       Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, leafNodeSize),
       KOKKOS_LAMBDA(const std::size_t i) { nodeOffset(i) = 0; });
@@ -73,6 +98,8 @@ void HignnModel::DenseDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
   while (workSize > 0) {
     totalNumIter++;
     int totalCoord = 0;
+
+    // Calculate the number of pairwise interactions for each active node
     Kokkos::parallel_reduce(
         Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workSize),
         KOKKOS_LAMBDA(const std::size_t i, int &tSum) {
@@ -97,6 +124,8 @@ void HignnModel::DenseDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
     Kokkos::fence();
 
     totalNumQuery += totalCoord;
+
+    // Compute offsets for flattened coordinate arrays
     Kokkos::parallel_for(
         Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, workSize),
         KOKKOS_LAMBDA(const int rank) {
@@ -107,7 +136,8 @@ void HignnModel::DenseDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
         });
     Kokkos::fence();
 
-    // calculate the relative coordinates
+    // calculate the relative coordinates for each particle pair in the current
+    // batch
     Kokkos::parallel_for(
         Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(workSize,
                                                           Kokkos::AUTO()),
@@ -144,6 +174,7 @@ void HignnModel::DenseDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
     Kokkos::fence();
 
     // do inference
+    // Query the two-body model using Torch for all pairs
 #if USE_GPU
     auto options = torch::TensorOptions()
                        .dtype(torch::kFloat32)
@@ -175,6 +206,7 @@ void HignnModel::DenseDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
 
     auto dataPtr = resultTensor.data_ptr<float>();
 
+    // Compute dot product for each pair, accumulating into u
     Kokkos::parallel_for(
         Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(workSize,
                                                           Kokkos::AUTO()),
