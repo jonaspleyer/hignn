@@ -14,11 +14,11 @@ using namespace std;
  * parallel execution. The function dynamically adjusts the work size based on
  * the estimated workload for each batch.
  *
- * @param u [in, out] A matrix of size (num_particles, 3) representing the
+ * @param u [in, out] A 2D array of size (num_particles, 3) representing the
  * velocities of the particles. The velocities are added with the resulting
  * velocity due to the close-range hydrodynamic interactions w.r.t the acting
  * forces.
- * @param f [in] A matrix of size (num_particles, 3) representing the forces
+ * @param f [in] A 2D array of size (num_particles, 3) representing the forces
  * applied to the particles.
  */
 
@@ -204,7 +204,7 @@ void HignnModel::CloseDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
                 for (int l = 0; l < 3; l++) {
                   relativeCoordPool(3 * index + l) =
                       mCoord(indexJStart + k, l) - mCoord(indexIStart + j, l);
-                  //!< Calculate relative coordinate difference.
+                  //!< Calculate relative coordinate.
                 }
               });
         });
