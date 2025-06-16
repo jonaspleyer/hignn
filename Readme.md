@@ -5,9 +5,9 @@
 One can build the docker image locally
 ```shell
 cd script
-docker build --rm -f Dockerfile.hignn -t hignn .
+docker build --rm -f Dockerfile.hignn.Ampreme -t hignn .
 ```
-or pull the image from the docker hub. On Ampere architecture
+or pull the image from the docker hub. By default, it assumes the Ampreme architecture
 ```shell
 docker pull zishengy/hignn:latest
 ```
@@ -44,7 +44,7 @@ docker run --privileged -it --rm -v $PWD:/local -w /local --entrypoint /bin/bash
 
 After entering the docker, you can run the Python script at the root directory as follows:
 ```shell
-python3 python/init.py --rebuild
+python3 python/compile.py --rebuild
 ```
 
 The above command only need once, the argument ``--rebuild`` is no more needed after the first time.  Also, re-entering to the docker environment won't need to compile the code again if the code is unchanged.
@@ -52,14 +52,7 @@ The above command only need once, the argument ``--rebuild`` is no more needed a
 # Run the code
 
 ```shell
-python3 python/example.py
+python3 python/engine.py $config_file $new_cmd
 ```
 
-To initialize the mpirun running, one can use the following command:
-```shell
-mpirun -n $n python3 python/example.py
-```
-For ``$n``, you can change it to whatever number of GPUs you want to use.
-
-# Manage model
-For multiple GPUs, one have to convert the models into duplicates in ``nn`` directory.  To initiate it, you should use the ``init.py`` with the ``--model`` argument.
+One can select ``$new_cmd`` from one of ``--generate``, ``--simulate`` and ``--visualize``.
