@@ -4,7 +4,7 @@
         "_type": "Type of cloud (options: 'filament_cloud', 'particle_cloud', 'filament_particle_cloud')",
 
         "particle": {
-            "n_particle": 11,
+            "n_particle": 1000,
             "_n_particle": "Number of particles",
 
             "min_dist": 2.1,
@@ -72,6 +72,6 @@
 
     "model": {
         "two_body_model": "nn/two_body_unbounded",
-        "_two_body_model": "Path to the neural network model"
+        "_two_body_model": "Path to the two-body neural network model"
     }
 }
