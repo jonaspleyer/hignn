@@ -5,13 +5,18 @@ import json
 import shutil
 import os
 
+from container import get_cmd, get_num_device
+
 # Test that engine.py fails to run without a config file
 def test_cant_run_without_config():
+    test_cmd = "python3 python/engine.py --generate"
     result = subprocess.run(
-        ["python3", "python/engine.py", "--generate"],
+        get_cmd(test_cmd),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
+        bufsize=1,
+        shell=True
     )
     print("\nStderr:", result.stderr)
 
@@ -19,18 +24,20 @@ def test_cant_run_without_config():
     
 # Test that cloud generation works correctly
 def test_can_generate_correctly():
+    test_cmd = "python3 python/engine.py python/config/config_template.json --generate"
     process = subprocess.Popen(
-        ["python3", "python/engine.py", "python/config/config_template.json", "--generate"],
+        get_cmd(test_cmd),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        bufsize=1
+        bufsize=1,
+        shell=True
     )
     
     for line in process.stdout:
         print(line, end="") 
     
-    process.stdout.close()  
+    process.stdout.close()
     process.wait()
     print("\nStderr:", process.stderr)
         
@@ -55,18 +62,42 @@ def test_can_generate_correctly():
     
 # Test that simulation works correctly
 def test_can_simulate_correctly():
+    test_cmd = "python3 python/engine.py python/config/config_template.json --simulate"
     process = subprocess.Popen(
-        ["python3", "python/engine.py", "python/config/config_template.json", "--simulate"],
+        get_cmd(test_cmd),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        bufsize=1
+        bufsize=1,
+        shell=True
     )
     
     for line in process.stdout:
         print(line, end="") 
          
-    process.stdout.close()  
+    process.stdout.close()
+    process.wait()
+    print("\nStderr:", process.stderr)
+        
+    assert process.returncode == 0
+
+# Test that simulation works correctly
+def test_can_simulate_parallel_correctly():
+    num_device = get_num_device()
+    test_cmd = "mpirun -n " + str(num_device) + " python3 python/engine.py python/config/config_template.json --simulate"
+    process = subprocess.Popen(
+        get_cmd(test_cmd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+        shell=True
+    )
+    
+    for line in process.stdout:
+        print(line, end="") 
+         
+    process.stdout.close()
     process.wait()
     print("\nStderr:", process.stderr)
         
@@ -74,11 +105,14 @@ def test_can_simulate_correctly():
     
 # Test that visualization works correctly
 def test_can_visualize_correctly():
+    test_cmd = "python3 python/engine.py python/config/config_template.json --visualize"
     process = subprocess.run(
-        ["python3", "python/engine.py", "python/config/config_template.json", "--visualize"],
+        get_cmd(test_cmd),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        bufsize=1,
+        shell=True
     )
     
     print(process.stdout, end="")
