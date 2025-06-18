@@ -50,7 +50,7 @@ RUN cd /opt/pytorch && \
     pip3 install --upgrade cmake && \
     git submodule sync && \
     git submodule update --init --recursive && \
-    MAX_JOB=$(nproc) BUILD_CAFFE2=OFF BUILD_LITE_INTERPRETER=OFF python3 setup.py develop
+    CMAKE_PREFIX_PATH="$(python3 -c "import site; print(site.getsitepackages()[0])")/" MAX_JOB=$(nproc) BUILD_CAFFE2=OFF BUILD_LITE_INTERPRETER=OFF CMAKE_POLICY_VERSION_MINIMUM=3.5 python3 setup.py develop
 
 # PyTorch Geometric
 RUN pip3 install --no-cache-dir torch_geometric pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.5.0+cpu.html
@@ -138,6 +138,8 @@ RUN cd /opt/ && \
     rm -rf /opt/vtk
 
 ENV VTK_DIR=/opt/vtk-build/lib/cmake/vtk-9.1
+
+RUN pip3 install vtk pytest
 
 # clean up
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
