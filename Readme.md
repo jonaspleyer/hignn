@@ -9,23 +9,23 @@ docker build --rm -f Dockerfile.hignn.Ampreme -t hignn .
 ```
 or pull the image from the docker hub. By default, it assumes the Ampreme architecture
 ```shell
-docker pull zishengy/hignn:latest
+docker pull panlabuwmadison/hignn:latest
 ```
 On Ada Lovelace architecture
 ```shell
-docker pull zishengy/hignn:adalovelace
+docker pull panlabuwmadison/hignn:adalovelace
 ```
 If using CPU only, one can pull the image via
 ```
-docker pull zishengy/hignn:cpu
+docker pull panlabuwmadison/hignn:cpu
 ```
 
 # Initialize
 Rename the image with
 ```shell
-docker image tag zishengy/hignn:{ARCH} hignn
+docker image tag panlabuwmadison/hignn:{ARCH} hignn
 ```
-where {ARCH} can be latest/adalovelace/cpu.
+where {ARCH} can be latest/amprere/adalovelace/cpu.
 
 On Linux
 ```shell
@@ -37,7 +37,7 @@ docker run --privileged -it --rm -v ${PWD}:/local -w /local --entrypoint /bin/ba
 ```
 If using cpu only, please use
 ```shell
-docker run --privileged -it --rm -v $PWD:/local -w /local --entrypoint /bin/bash --shm-size=4g --hostname hignn hignn
+docker run --privileged -it --rm -v $PWD:/local -w /local --entrypoint /bin/bash --shm-size=4g --hostname hignn hignn:cpu
 ```
 
 # Compile the code
@@ -47,7 +47,11 @@ After entering the docker, you can run the Python script at the root directory a
 python3 python/compile.py --rebuild
 ```
 
-The above command only need once, the argument ``--rebuild`` is no more needed after the first time.  Also, re-entering to the docker environment won't need to compile the code again if the code is unchanged.
+The above command only need once, the argument ``--rebuild`` is no more needed after the first time.  One only needs
+```shell
+python3 python/compile.py
+```
+Also, re-entering to the docker environment won't need to compile the code again if the code is unchanged.
 
 # Run the code
 
@@ -55,4 +59,6 @@ The above command only need once, the argument ``--rebuild`` is no more needed a
 python3 python/engine.py $config_file $new_cmd
 ```
 
-One can select ``$new_cmd`` from one of ``--generate``, ``--simulate`` and ``--visualize``.
+One can select ``$new_cmd`` from one of ``--generate``, ``--simulate`` and ``--visualize``, which can be used to generate the initial configuration of particles, perform the simulation and post-processing the data, respectively.
+
+# Test
