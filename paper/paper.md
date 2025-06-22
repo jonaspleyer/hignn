@@ -1,5 +1,5 @@
 ---
-title: '$\mathcal{H}$-HIGNN Toolkit: A Software for Efficient and Scalable Simulation of Large-Scale Particulate Suspensions Using GNNs and $\mathcal{H}$-Matrices'
+title: 'H-HIGNN Toolkit: A Software for Efficient and Scalable Simulation of Large-Scale Particulate Suspensions Using GNNs andH-Matrices'
 
 tags: 
   - Python/C++
@@ -37,7 +37,7 @@ bibliography: paper.bib
 
 # Summary
 
-Particulate suspensions—systems of particles dispersed in viscous fluids—play a critical role in various scientific and engineering applications [@ParticulateReview_Maxey2017,@shelley2016dynamics]. This software implements $\mathcal{H}$-HIGNN, a framework designed for efficient and scalable simulation of large-scale particulate suspensions. It extends the Hydrodynamic Interaction Graph Neural Network (HIGNN) approach [@ma2022fast, @ma2024shape], which utilizes GNNs to model the mobility tensor that dictates particle dynamics under hydrodynamic interactions (HIs) and external forces. HIGNN effectively captures both short- and long-range HIs and their many-body effects and enables substantial computational acceleration by harvesting the power of machine learning. By incorporating hierarchical matrix ($\mathcal{H}$-matrix) techniques, $\mathcal{H}$-HIGNN further improves computational efficiency, achieving quasi-linear prediction cost with respect to the number of particles. Its GPU-optimized implementation delivers near-theoretical quasi-linear wall-time scaling and near-ideal strong scalability for parallel efficiency. The methodology, validation, and efficiency demonstrations of $\mathcal{H}$-HIGNN are detailed in [@ma2025].
+Particulate suspensions—systems of particles dispersed in viscous fluids—play a critical role in various scientific and engineering applications [@ParticulateReview_Maxey2017;@shelley2016dynamics]. This software implements $\mathcal{H}$-HIGNN, a framework designed for efficient and scalable simulation of large-scale particulate suspensions. It extends the Hydrodynamic Interaction Graph Neural Network (HIGNN) approach [@ma2022fast;@ma2024shape], which utilizes GNNs to model the mobility tensor that dictates particle dynamics under hydrodynamic interactions (HIs) and external forces. HIGNN effectively captures both short- and long-range HIs and their many-body effects and enables substantial computational acceleration by harvesting the power of machine learning. By incorporating hierarchical matrix ($\mathcal{H}$-matrix) techniques, $\mathcal{H}$-HIGNN further improves computational efficiency, achieving quasi-linear prediction cost with respect to the number of particles. Its GPU-optimized implementation delivers near-theoretical quasi-linear wall-time scaling and near-ideal strong scalability for parallel efficiency. The methodology, validation, and efficiency demonstrations of $\mathcal{H}$-HIGNN are detailed in @ma2025.
 
 # Statement of need
 
