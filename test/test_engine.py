@@ -119,3 +119,9 @@ def test_can_visualize_correctly():
     print("\nStderr:", process.stderr)
     
     assert process.returncode == 0
+
+test_cant_run_without_config()
+test_can_generate_correctly()
+test_can_simulate_correctly()
+test_can_simulate_parallel_correctly()
+test_can_visualize_correctly()
