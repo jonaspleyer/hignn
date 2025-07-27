@@ -73,4 +73,4 @@ The test can be launched via
 ```
 pytest test/test_engine.py
 ```
-no matter whether the docker image is invoked or not.
+within the docker image.
