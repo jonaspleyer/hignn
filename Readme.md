@@ -10,7 +10,8 @@ $\mathcal{H}$-HIGNN is a framework designed for efficient and scalable simulatio
 ## Prepare the docker environment
 One can build the docker image locally
 ```shell
-cd script
+git clone https://github.com/Pan-Group-UW-Madison/hignn/tree/main --recursive
+cd hignn/script
 docker build --rm -f Dockerfile.hignn.Ampreme -t hignn .
 ```
 or pull the image from the docker hub. By default, it assumes the Ampreme architecture
