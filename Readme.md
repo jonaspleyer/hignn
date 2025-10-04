@@ -1,4 +1,4 @@
-# $\mathcal{H}$-HIGNN Toolkit
+# H-HIGNN Toolkit
 
 ## Introduction
 
