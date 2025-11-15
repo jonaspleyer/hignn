@@ -1101,7 +1101,7 @@ void HignnModel::FarDot(DeviceDoubleMatrix u, DeviceDoubleMatrix f) {
             // Check stopping criterion for this batch/node.
             if (nu2(i) < mu2(i) * epsilon2 ||
                 workingNodeIteration(i) >= maxIter ||
-                workingNodeIteration(i) >= min(rowSize, colSize)) {
+                workingNodeIteration(i) >= std::min(rowSize, colSize)) {
               stopNode(i) = -1;
             } else {
               stopNode(i) = 0;
