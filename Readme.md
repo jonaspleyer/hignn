@@ -12,9 +12,9 @@ One can build the docker image locally
 ```shell
 git clone https://github.com/Pan-Group-UW-Madison/hignn/tree/main --recursive
 cd hignn/script
-docker build --rm -f Dockerfile.hignn.Ampreme -t hignn .
+docker build --rm -f Dockerfile.hignn.Ampere -t hignn .
 ```
-or pull the image from the docker hub. By default, it assumes the Ampreme architecture
+or pull the image from the docker hub. By default, it assumes the Ampere architecture
 ```shell
 docker pull panlabuwmadison/hignn:latest
 ```
@@ -32,7 +32,7 @@ Rename the image with
 ```shell
 docker image tag panlabuwmadison/hignn:{ARCH} hignn
 ```
-where {ARCH} can be latest/amprere/adalovelace/cpu.
+where {ARCH} can be latest/ampere/adalovelace/cpu.
 
 On Linux
 ```shell
