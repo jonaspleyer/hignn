@@ -2,10 +2,12 @@ import subprocess
 import os
 
 def running_in_docker():
+    docker_env_file = "/.dockerenv"
     try:
-        with open("/proc/1/cgroup", "rt") as f:
-            content = f.read()
-        return "docker" in content or "containerd" in content
+        if os.path.exists(docker_env_file):
+            return True
+        else:
+            return False
     except FileNotFoundError:
         return False
 
@@ -56,5 +58,5 @@ def get_num_device():
     except FileNotFoundError:
         pass  # nvidia-smi not found
 
-    cpu_count = os.cpu_count()
+    cpu_count = max(4, os.cpu_count())
     return cpu_count
