@@ -44,6 +44,4 @@ jobs:
         -v $PWD:/workspace \
         -w /workspace \
         panlabuwmadison/hignn:cpu \
-        apt-get update && \
-        apt-get install -y libxrender1 && \
-        pytest -s test/test_engine.py
+        sh -c "apt-get update && apt-get install libxrender1 && pytest -s test/test_engine.py"
