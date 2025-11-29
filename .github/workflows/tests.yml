@@ -29,7 +29,7 @@ jobs:
     - name: Install Python dependencies
       run: |
         python3 -m pip install --upgrade pip
-        pip install numpy pytest
+        pip install numpy pytest torch
 
     # 5. Compile HIGNN
     - name: Compile HIGNN
