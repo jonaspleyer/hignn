@@ -61,7 +61,7 @@
         "dt": 0.005,
         "_dt": "Time step size for the simulation",
 
-        "t_max": 0.1,
+        "t_max": 0.01,
         "_t_max": "Final time for the simulation",
 
         "t_meas": 2,
