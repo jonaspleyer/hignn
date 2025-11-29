@@ -31,9 +31,17 @@ jobs:
     # 5. Compile HIGNN
     - name: Compile HIGNN
       run: |
+        docker run --privileged --rm \
+        -v $PWD:/workspace \
+        -w /workspace \
+        panlabuwmadison/hignn:cpu \
         python3 python/init.py --rebuild
 
     # 6. Run tests
     - name: Run tests
       run: |
+        docker run --privileged --rm \
+        -v $PWD:/workspace \
+        -w /workspace \
+        panlabuwmadison/hignn:cpu \
         pytest -s test/test_engine.py
