@@ -26,7 +26,7 @@ void Init() {
                       .set_disable_warnings(false);
 #else
   auto settings =
-      Kokkos::InitializationSettings().set_num_threads(10).set_disable_warnings(
+      Kokkos::InitializationSettings().set_num_threads(1).set_disable_warnings(
           false);
 #endif
 
