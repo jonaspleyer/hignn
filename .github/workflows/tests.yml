@@ -48,4 +48,4 @@ jobs:
     # 8. Run tests
     - name: Run tests
       run: |
-        pytest -s python/test_engine.py
+        pytest -s test/test_engine.py
