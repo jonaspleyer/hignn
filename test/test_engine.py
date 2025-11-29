@@ -18,7 +18,8 @@ def test_cant_run_without_config():
         bufsize=1,
         shell=True
     )
-    print("\nStderr:", result.stderr)
+    if result.returncode != 0:
+        print("\nStderr:", result.stderr)
 
     assert result.returncode !=0
     
@@ -35,11 +36,11 @@ def test_can_generate_correctly():
     )
     
     for line in process.stdout:
-        print(line, end="") 
+        print(line, end="")
     
     process.stdout.close()
-    process.wait()
-    print("\nStderr:", process.stderr)
+    if process.wait():
+        print("\nStderr:", process.stderr)
         
     # Parse config
     with open("python/config/config_template.json", "r") as f:
@@ -73,11 +74,11 @@ def test_can_simulate_correctly():
     )
     
     for line in process.stdout:
-        print(line, end="") 
-         
+        print(line, end="")
+
     process.stdout.close()
-    process.wait()
-    print("\nStderr:", process.stderr)
+    if process.wait():
+        print("\nStderr:", process.stderr)
         
     assert process.returncode == 0
 
@@ -95,18 +96,18 @@ def test_can_simulate_parallel_correctly():
     )
     
     for line in process.stdout:
-        print(line, end="") 
-         
-    process.stdout.close()
+        print(line, end="")
+    
     process.wait()
-    print("\nStderr:", process.stderr)
+    if process.wait():
+        print("\nStderr:", process.stderr)
         
     assert process.returncode == 0
     
 # Test that visualization works correctly
 def test_can_visualize_correctly():
     test_cmd = "python3 python/engine.py python/config/config_template.json --visualize"
-    process = subprocess.run(
+    process = subprocess.Popen(
         get_cmd(test_cmd),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -115,8 +116,12 @@ def test_can_visualize_correctly():
         shell=True
     )
     
-    print(process.stdout, end="")
-    print("\nStderr:", process.stderr)
+    for line in process.stdout:
+        print(line, end="")
+
+    process.stdout.close()
+    if process.wait():
+        print("\nStderr:", process.stderr)
     
     assert process.returncode == 0
 
