@@ -58,5 +58,5 @@ def get_num_device():
     except FileNotFoundError:
         pass  # nvidia-smi not found
 
-    cpu_count = max(4, os.cpu_count())
+    cpu_count = min(4, os.cpu_count())
     return cpu_count
