@@ -4,7 +4,7 @@
         "_type": "Type of cloud (options: 'filament_cloud', 'particle_cloud', 'filament_particle_cloud')",
 
         "particle": {
-            "n_particle": 500,
+            "n_particle": 5000,
             "_n_particle": "Number of particles",
 
             "min_dist": 2.1,

@@ -97,8 +97,8 @@ def test_can_simulate_parallel_correctly():
     
     for line in process.stdout:
         print(line, end="")
-    
-    process.wait()
+
+    process.stdout.close()
     if process.wait():
         print("\nStderr:", process.stderr)
         

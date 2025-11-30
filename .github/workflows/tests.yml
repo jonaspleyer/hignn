@@ -9,35 +9,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Checkout the repository
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # 2. Set up Python
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
 
-    # 3. Make Docker available
     - name: Make Docker available
       uses: docker/setup-buildx-action@v3
 
-    # 4. Pull required Docker images (CPU-only)
+    - name: Cache Docker layers
+      uses: actions/cache@v4
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+    
     - name: Pull required images
       run: |
-        docker pull panlabuwmadison/hignn:cpu || true
+        docker pull panlabuwmadison/hignn:cpu
 
-    # 5. Compile HIGNN
     - name: Compile HIGNN
       run: |
         docker run --privileged --rm \
         -v $PWD:/workspace \
         -w /workspace \
+        --env BUILDKIT_INLINE_CACHE=1 \
         panlabuwmadison/hignn:cpu \
         python3 python/init.py --rebuild
+    
+    - name: Cache project dependencies
+      uses: actions/cache@v4
+      with:
+        path: path/to/your/cache
+        key: ${{ runner.os }}-project-${{ hashFiles('**/some-key-file.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-project-
 
-    # 6. Run tests
     - name: Run tests
       run: |
         docker run --privileged --rm \
