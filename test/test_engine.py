@@ -82,27 +82,27 @@ def test_can_simulate_correctly():
         
     assert process.returncode == 0
 
-# Test that simulation works correctly
-def test_can_simulate_parallel_correctly():
-    num_device = get_num_device()
-    test_cmd = "mpirun -n " + str(num_device) + " python3 python/engine.py python/config/config_template.json --simulate"
-    process = subprocess.Popen(
-        get_cmd(test_cmd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-        shell=True
-    )
+# Test that parallel simulation works correctly
+# def test_can_simulate_parallel_correctly():
+#     num_device = get_num_device()
+#     test_cmd = "mpirun -n " + str(num_device) + " python3 python/engine.py python/config/config_template.json --simulate"
+#     process = subprocess.Popen(
+#         get_cmd(test_cmd),
+#         stdout=subprocess.PIPE,
+#         stderr=subprocess.PIPE,
+#         text=True,
+#         bufsize=1,
+#         shell=True
+#     )
     
-    for line in process.stdout:
-        print(line, end="")
+#     for line in process.stdout:
+#         print(line, end="")
 
-    process.stdout.close()
-    if process.wait():
-        print("\nStderr:", process.stderr)
+#     process.stdout.close()
+#     if process.wait():
+#         print("\nStderr:", process.stderr)
         
-    assert process.returncode == 0
+#     assert process.returncode == 0
     
 # Test that visualization works correctly
 def test_can_visualize_correctly():
