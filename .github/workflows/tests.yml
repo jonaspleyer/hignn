@@ -40,14 +40,6 @@ jobs:
         --env BUILDKIT_INLINE_CACHE=1 \
         panlabuwmadison/hignn:cpu \
         python3 python/init.py --rebuild
-    
-    - name: Cache project dependencies
-      uses: actions/cache@v4
-      with:
-        path: path/to/your/cache
-        key: ${{ runner.os }}-project-${{ hashFiles('**/some-key-file.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-project-
 
     - name: Run tests
       run: |

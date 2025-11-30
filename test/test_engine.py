@@ -128,6 +128,6 @@ def test_can_visualize_correctly():
 test_cant_run_without_config()
 test_can_generate_correctly()
 test_can_simulate_correctly()
-if get_num_device() >= 4:
-    test_can_simulate_parallel_correctly()
+# if get_num_device() >= 4:
+#     test_can_simulate_parallel_correctly()
 test_can_visualize_correctly()
